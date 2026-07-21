@@ -103,6 +103,7 @@
 
             <div style="margin-bottom: 10px;">
                 <button id="start-btn" class="hidden">🎲 Начать игру</button>
+                <button id="next-phase-btn" class="hidden" style="background: #d4edda; border-color: #c3e6cb;">☀️ Завершить ночь / Начать день</button>
             </div>
             
             <div style="display: flex; gap: 10px;">
@@ -111,11 +112,11 @@
                     <ul id="players-list" style="background: #fff; border: 1px inset #7f9db9; height: 110px; overflow-y: auto; padding: 5px; margin-top: 5px; list-style: none; font-size: 11px;"></ul>
                 </div>
                 <div style="width: 50%;">
-                    <b>Действие (Ночь):</b>
+                    <b>Действие:</b>
                     <div style="background: #eee; border: 1px solid #ccc; padding: 5px; height: 110px; font-size: 11px; margin-top: 5px;">
                         <p id="action-instruction">Игра не началась.</p>
                         <select id="target-select" style="width: 100%; margin-bottom: 5px;" class="hidden"></select>
-                        <button id="action-btn" class="hidden">Подтвердить</button>
+                        <button id="action-btn" class="hidden">Подтвердить ход</button>
                     </div>
                 </div>
             </div>
@@ -127,7 +128,7 @@
         </div>
     </div>
 
-    <!-- ВСЯ ЛОГИКА ВНУТРИ ОДНОГО СКРИПТА -->
+    <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
@@ -159,12 +160,14 @@
         const chatInput = document.getElementById("chat-input");
         const sendChatBtn = document.getElementById("send-chat-btn");
         const startBtn = document.getElementById("start-btn");
+        const nextPhaseBtn = document.getElementById("next-phase-btn");
         const actionInstruction = document.getElementById("action-instruction");
         const targetSelect = document.getElementById("target-select");
         const actionBtn = document.getElementById("action-btn");
 
         let playerName = "";
         let roomCode = "";
+        let hasActed = false;
 
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
@@ -179,7 +182,7 @@
                     const rCode = docSnap.id;
                     const rData = docSnap.data();
                     const playersCount = rData.players ? rData.players.length : 0;
-                    const statusText = rData.status === "waiting" ? "Ожидание" : "Идет игра";
+                    const statusText = rData.status === "waiting" ? "Ожидание" : (rData.status === "night" ? "🌙 Ночь" : "☀️ День");
 
                     const div = document.createElement("div");
                     div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #7f9db9; padding: 4px; margin-bottom: 3px; font-size: 11px;";
@@ -210,15 +213,13 @@
                 const roomRef = doc(db, "rooms", roomCode);
                 const roomSnap = await getDoc(roomRef);
 
-                if (roomSnap.exists()) {
-                    alert("Комната уже существует!");
-                    return;
-                }
+                if (roomSnap.exists()) { alert("Комната уже существует!"); return; }
 
                 await setDoc(roomRef, {
                     host: playerName,
                     status: "waiting",
                     players: [{ name: playerName, role: "Ожидание", alive: true }],
+                    nightActions: {},
                     messages: []
                 });
 
@@ -264,27 +265,101 @@
             subscribeToRoom();
         }
 
+        // Старт игры хостом
         startBtn.addEventListener("click", async () => {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
             if (!roomSnap.exists()) return;
             
             let players = roomSnap.data().players;
-            if (players.length < 1) { alert("Мало игроков!"); return; }
+            if (players.length < 3) { alert("Нужно минимум 3 игрока для ролей (Мафия, Шериф, Путана/Мирный)!"); return; }
 
-            const rolesPool = ["Мафия", "Шериф"];
+            const rolesPool = ["Мафия", "Шериф", "Путана"];
             while (rolesPool.length < players.length) rolesPool.push("Мирный");
             rolesPool.sort(() => Math.random() - 0.5);
 
             players.forEach((p, i) => { p.role = rolesPool[i]; p.alive = true; });
 
+            hasActed = false;
             await updateDoc(roomRef, {
                 status: "night",
                 players: players,
-                messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: "Игра началась! Наступила ночь." })
+                nightActions: {},
+                messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: "🎲 Игра началась! Наступила ночь. Роли распределены." })
             });
         });
 
+        // Отправка ночного хода
+        actionBtn.addEventListener("click", async () => {
+            const target = targetSelect.value;
+            if (!target) return;
+
+            const roomRef = doc(db, "rooms", roomCode);
+            const roomSnap = await getDoc(roomRef);
+            const data = roomSnap.data();
+            const me = data.players.find(p => p.name === playerName);
+
+            let actions = data.nightActions || {};
+            actions[playerName] = { role: me.role, target: target };
+
+            hasActed = true;
+            actionBtn.classList.add("hidden");
+            targetSelect.classList.add("hidden");
+            actionInstruction.innerText = "Ход принят. Ожидание остальных игроков...";
+
+            await updateDoc(roomRef, { nightActions: actions });
+        });
+
+        // Кнопка хоста для перехода от ночи к дню с обработкой убийств
+        nextPhaseBtn.addEventListener("click", async () => {
+            const roomRef = doc(db, "rooms", roomCode);
+            const roomSnap = await getDoc(roomRef);
+            if (!roomSnap.exists()) return;
+            const data = roomSnap.data();
+
+            let players = data.players;
+            let actions = data.nightActions || {};
+            let mafiaTarget = null;
+            let blockedTarget = null;
+            let sheriffCheck = null;
+
+            // Обрабатываем ночные действия
+            for (let pName in actions) {
+                let act = actions[pName];
+                if (act.role === "Мафия") mafiaTarget = act.target;
+                if (act.role === "Путана") blockedTarget = act.target;
+                if (act.role === "Шериф") sheriffCheck = act;
+            }
+
+            let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
+
+            // Если путана заблокировала мафию — убийства нет
+            if (mafiaTarget && mafiaTarget === blockedTarget) {
+                nightLog += "• Ночью было тихо: мафия пришла к жертве, но ее отвлекла путана!<br>";
+                mafiaTarget = null;
+            }
+
+            // Убийство мафии
+            if (mafiaTarget) {
+                let victim = players.find(p => p.name === mafiaTarget);
+                if (victim) {
+                    victim.alive = false;
+                    nightLog += `• Город проснулся с ужасной новостью: убит **${victim.name}**!<br>`;
+                }
+            } else {
+                nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
+            }
+
+            await updateDoc(roomRef, {
+                status: "day",
+                players: players,
+                nightActions: {},
+                messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
+            });
+            hasActed = false;
+        });
+
+        // Чат
         async function sendMessage() {
             const text = chatInput.value.trim();
             if (!text) return;
@@ -298,30 +373,85 @@
         sendChatBtn.addEventListener("click", sendMessage);
         chatInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
 
+        // Синхронизация комнаты в реальном времени
         function subscribeToRoom() {
             const roomRef = doc(db, "rooms", roomCode);
             onSnapshot(roomRef, (docSnap) => {
                 if (!docSnap.exists()) return;
                 const data = docSnap.data();
 
+                // Управление кнопкой старта для хоста
                 if (data.host === playerName && data.status === "waiting") {
                     startBtn.classList.remove("hidden");
                 } else {
                     startBtn.classList.add("hidden");
                 }
 
+                // Кнопка перехода фазы (доступна хосту во время ночи)
+                if (data.host === playerName && data.status === "night") {
+                    nextPhaseBtn.classList.remove("hidden");
+                } else {
+                    nextPhaseBtn.classList.add("hidden");
+                }
+
+                // Список игроков
                 playersList.innerHTML = "";
                 data.players.forEach(p => {
                     const li = document.createElement("li");
-                    li.innerText = `${p.name} [${p.alive ? 'Жив' : 'Мертв'}]`;
+                    li.innerHTML = `${p.name} — <span style="color: ${p.alive ? 'green' : 'red'}">${p.alive ? 'Жив' : 'Мертв'}</span>`;
                     playersList.appendChild(li);
                 });
 
                 const me = data.players.find(p => p.name === playerName);
-                if (me && data.status !== "waiting") {
-                    roleDisplay.innerText = `Ваша роль: ${me.role}`;
+                if (me) {
+                    if (data.status === "waiting") {
+                        roleDisplay.innerText = "Ваша роль: Ожидание начала...";
+                        actionInstruction.innerText = "Игра еще не началась.";
+                        targetSelect.classList.add("hidden");
+                        actionBtn.classList.add("hidden");
+                    } else if (!me.alive) {
+                        roleDisplay.innerText = `Ваша роль: ${me.role} (Мертв 💀)`;
+                        actionInstruction.innerText = "Вы погибли и можете только наблюдать.";
+                        targetSelect.classList.add("hidden");
+                        actionBtn.classList.add("hidden");
+                    } else {
+                        roleDisplay.innerText = `Ваша роль: ${me.role} (Жив)`;
+
+                        if (data.status === "night") {
+                            if (me.role === "Мирный") {
+                                actionInstruction.innerText = "Ночь. Вы мирный житель, спите...";
+                                targetSelect.classList.add("hidden");
+                                actionBtn.classList.add("hidden");
+                            } else {
+                                if (!hasActed) {
+                                    actionInstruction.innerText = getInstruction(me.role);
+                                    targetSelect.innerHTML = "";
+                                    data.players.forEach(p => {
+                                        if (p.name !== playerName && p.alive) {
+                                            const opt = document.createElement("option");
+                                            opt.value = p.name;
+                                            opt.innerText = p.name;
+                                            targetSelect.appendChild(opt);
+                                        }
+                                    });
+                                    targetSelect.classList.remove("hidden");
+                                    actionBtn.classList.remove("hidden");
+                                } else {
+                                    actionInstruction.innerText = "Ваш выбор принят. Ждите утро.";
+                                    targetSelect.classList.add("hidden");
+                                    actionBtn.classList.add("hidden");
+                                }
+                            }
+                        } else if (data.status === "day") {
+                            hasActed = false;
+                            actionInstruction.innerText = "Наступил день. Обсуждайте события в чате!";
+                            targetSelect.classList.add("hidden");
+                            actionBtn.classList.add("hidden");
+                        }
+                    }
                 }
 
+                // Вывод сообщений чата
                 if (data.messages) {
                     chatBox.innerHTML = "";
                     data.messages.forEach(msg => {
@@ -333,6 +463,13 @@
                     chatBox.scrollTop = chatBox.scrollHeight;
                 }
             });
+        }
+
+        function getInstruction(role) {
+            if (role === "Мафия") return "Выберите жертву для убийства:";
+            if (role === "Шериф") return "Выберите игрока для проверки:";
+            if (role === "Путана") return "Выберите игрока для блокировки:";
+            return "";
         }
 
         loadRoomsList();
