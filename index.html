@@ -92,7 +92,6 @@
             font-size: 11px;
         }
 
-        /* Стиль для WinXP модального окна ошибки */
         #xp-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -276,7 +275,6 @@
         const actionBtn = document.getElementById("action-btn");
         const skipBtn = document.getElementById("skip-btn");
 
-        // Элементы WinXP ошибки
         const xpOverlay = document.getElementById("xp-overlay");
         const xpModalText = document.getElementById("xp-modal-text");
         const xpModalOk = document.getElementById("xp-modal-ok");
@@ -442,7 +440,6 @@
             lastSheriffResult = "";
         });
 
-        // Улучшенный честный алгоритм рандомизации ролей
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -538,26 +535,23 @@
                 let doctorTarget = null;
                 let blockedTarget = null;
                 let sheriffTarget = null;
+                let putanaName = null;
 
+                // Точный сбор ночных целей каждого игрока
                 for (let pName in actions) {
                     let act = actions[pName];
                     if (act.role === "Мафия") mafiaTarget = act.target;
                     if (act.role === "Доктор") doctorTarget = act.target;
-                    if (act.role === "Путана") blockedTarget = act.target;
-                    if (act.role === "Шериф") sheriffTarget = act.target;
-                }
-
-                let putanaName = null;
-                for (let pName in actions) {
-                    if (actions[pName].role === "Путана") {
+                    if (act.role === "Путана") {
+                        blockedTarget = act.target;
                         putanaName = pName;
-                        break;
                     }
+                    if (act.role === "Шериф") sheriffTarget = act.target;
                 }
 
                 let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
 
-                // Если путана заскочила к мафии — путана умирает, а жертва мафии спасается
+                // Если путана заблокировала мафию — мафия пропускает ход, а путана погибает
                 if (blockedTarget && blockedTarget === mafiaTarget) {
                     nightLog += `• Путана (<b>${putanaName}</b>) заскочила к мафии и была убита!<br>`;
                     let putanaPlayer = players.find(p => p.name === putanaName);
@@ -567,7 +561,7 @@
                     nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b>.<br>`;
                 }
 
-                // Исцеление доктора (полностью отменяет убийство мафии)
+                // Исцеление доктора
                 let saved = false;
                 if (mafiaTarget && mafiaTarget === doctorTarget) {
                     saved = true;
@@ -603,11 +597,7 @@
                     });
 
                     setTimeout(async () => {
-                        try {
-                            await deleteDoc(roomRef);
-                        } catch (e) {
-                            console.error("Ошибка удаления комнаты:", e);
-                        }
+                        try { await deleteDoc(roomRef); } catch (e) {}
                     }, 5000);
                     return;
                 }
@@ -658,11 +648,7 @@
                             });
 
                             setTimeout(async () => {
-                                try {
-                                    await deleteDoc(roomRef);
-                                } catch (e) {
-                                    console.error("Ошибка удаления комнаты:", e);
-                                }
+                                try { await deleteDoc(roomRef); } catch (e) {}
                             }, 5000);
                             return;
                         }
