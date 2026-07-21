@@ -183,7 +183,7 @@
         </div>
     </div>
 
-    <!-- АДМИН-ПАНЕЛЬ -->
+    <!-- АДМИН-ПАНЕЛЬ (Общая) -->
     <div class="window hidden" id="admin-screen">
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Панель Администратора</span>
@@ -211,7 +211,7 @@
             </div>
 
             <b style="font-size: 11px;">Быстрые действия разработчика:</b><br>
-            <button id="admin-dev-tag-btn" style="width: 100%; margin-top: 5px; font-size: 11px; background: #d4edda; border-color: #c3e6cb;">⭐ Выдать себе тег разработчика [DEV]</button>
+            <button id="admin-dev-tag-btn" style="width: 100%; margin-top: 5px; font-size: 11px; background: #d4edda; border-color: #c3e6cb;">⭐ Выдать себе жирный красный тег [DEV]</button>
         </div>
     </div>
 
@@ -219,7 +219,10 @@
     <div class="window hidden" id="game-screen">
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span id="room-title-bar">Мафия - Комната</span>
-            <button id="leave-room-btn" style="font-size: 10px; padding: 2px 6px; background: #ffcccc; border-color: #ff9999;">🚪 Выйти</button>
+            <div style="display: flex; gap: 3px;">
+                <button id="ingame-admin-btn" style="font-size: 10px; padding: 2px 5px; background: #fff2cc; border-color: #d6b656;">⚙️ Админ</button>
+                <button id="leave-room-btn" style="font-size: 10px; padding: 2px 5px; background: #ffcccc; border-color: #ff9999;">🚪 Выйти</button>
+            </div>
         </div>
         <div class="window-body">
             <div class="status-box" id="role-display">Ваша роль: Ожидание...</div>
@@ -304,6 +307,7 @@
 
         const openAdminBtn = document.getElementById("open-admin-btn");
         const closeAdminBtn = document.getElementById("close-admin-btn");
+        const ingameAdminBtn = document.getElementById("ingame-admin-btn");
         const adminOnlineCount = document.getElementById("admin-online-count");
         const adminOnlineList = document.getElementById("admin-online-list");
         const adminOldName = document.getElementById("admin-old-name");
@@ -353,10 +357,17 @@
         let unsubscribeAdminRooms = null;
         let allRoomsCache = [];
 
+        // Функция форматирования никнейма: твой тег жирный и красный, остальные — обычные мелкие
+        function formatPlayerName(name) {
+            if (name.includes("[DEV]") || name.includes("style=\"color: red;")) {
+                let cleanName = name.replace(/<[^>]*>/g, "").replace("[DEV]", "").trim();
+                return `<strong style="color: red; font-size: 14px;">[DEV]</strong> ${cleanName}`;
+            }
+            return `<span style="font-size: 11px;">${name}</span>`;
+        }
+
         openAdminBtn.addEventListener("click", () => {
             const pwd = prompt("Введите пароль администратора:");
-            
-            // Проверка закодированного пароля (Mamka228 -> TWFta2EyMjg=)
             if (pwd && btoa(pwd) === "TWFta2EyMjg=") {
                 loginScreen.classList.add("hidden");
                 adminScreen.classList.remove("hidden");
@@ -366,9 +377,24 @@
             }
         });
 
+        ingameAdminBtn.addEventListener("click", () => {
+            const pwd = prompt("Введите пароль администратора:");
+            if (pwd && btoa(pwd) === "TWFta2EyMjg=") {
+                gameScreen.classList.add("hidden");
+                adminScreen.classList.remove("hidden");
+                startAdminListener();
+            } else if (pwd !== null) {
+                showXpError("Неверный пароль!");
+            }
+        });
+
         closeAdminBtn.addEventListener("click", () => {
             adminScreen.classList.add("hidden");
-            loginScreen.classList.remove("hidden");
+            if (roomCode) {
+                gameScreen.classList.remove("hidden");
+            } else {
+                loginScreen.classList.remove("hidden");
+            }
             if (unsubscribeAdminRooms) {
                 unsubscribeAdminRooms();
                 unsubscribeAdminRooms = null;
@@ -469,13 +495,11 @@
         });
 
         adminDevTagBtn.addEventListener("click", () => {
-            const currentVal = usernameInput.value.trim();
-            if (!currentVal.includes("[DEV]")) {
-                usernameInput.value = "[DEV] " + currentVal;
-                showXpError("Тег разработчика добавлен к вашему полю ввода никнейма!");
-            } else {
-                showXpError("Тег уже установлен!");
-            }
+            let currentVal = usernameInput.value.trim();
+            currentVal = currentVal.replace(/\[DEV\]/gi, "").replace(/<[^>]*>/g, "").trim();
+            // Превращаем в официальный системный тег
+            usernameInput.value = "[DEV] " + currentVal;
+            showXpError("Жирный красный тег разработчика успешно выдан!");
         });
 
         function renderRooms(roomsArray) {
@@ -542,7 +566,7 @@
             roomCode = newRoomCodeInput.value.trim();
 
             if (!playerName) { showXpError("Введите имя игрока!"); return; }
-            if (playerName.length > 30) { showXpError("Имя игрока слишком длинное!"); return; }
+            if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
             if (!roomCode) { showXpError("Введите название комнаты!"); return; }
 
@@ -571,7 +595,7 @@
         async function joinRoom(code) {
             playerName = usernameInput.value.trim();
             if (!playerName) { showXpError("Сначала введите ваше имя вверху!"); return; }
-            if (playerName.length > 30) { showXpError("Имя игрока слишком длинное!"); return; }
+            if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
 
             roomCode = code;
@@ -931,7 +955,7 @@
                 playersList.innerHTML = "";
                 data.players.forEach(p => {
                     const li = document.createElement("li");
-                    li.innerHTML = `${p.name} — <span style="color: ${p.alive ? 'green' : 'red'}">${p.alive ? 'Жив' : 'Мертв'}</span>`;
+                    li.innerHTML = `${formatPlayerName(p.name)} — <span style="color: ${p.alive ? 'green' : 'red'}; font-size: 11px;">${p.alive ? 'Жив' : 'Мертв'}</span>`;
                     playersList.appendChild(li);
                 });
 
@@ -980,7 +1004,7 @@
                                         if (p.name !== playerName && p.alive) {
                                             const opt = document.createElement("option");
                                             opt.value = p.name;
-                                            opt.innerText = p.name;
+                                            opt.innerText = p.name.replace(/<[^>]*>/g, "").replace("[DEV]", "").trim() + (p.name.includes("[DEV]") ? " [DEV]" : "");
                                             targetSelect.appendChild(opt);
                                             hasOptions = true;
                                         }
@@ -1020,12 +1044,12 @@
                                     if (p.alive) {
                                         const opt = document.createElement("option");
                                         opt.value = p.name;
-                                        opt.innerText = p.name;
+                                        opt.innerText = p.name.replace(/<[^>]*>/g, "").replace("[DEV]", "").trim() + (p.name.includes("[DEV]") ? " [DEV]" : "");
                                         targetSelect.appendChild(opt);
                                     }
                                 });
 
-                                if (currentSelected && [...targetSelect.options].some(o => o.value === currentSelected)) {
+                                if (currentSelected && [...targetStatusOptions].some(o => o.value === currentSelected)) {
                                     targetSelect.value = currentSelected;
                                 } else if (targetSelect.options.length > 0) {
                                     targetSelect.selectedIndex = 0;
@@ -1049,7 +1073,8 @@
                     data.messages.forEach(msg => {
                         const div = document.createElement("div");
                         div.className = "chat-msg";
-                        div.innerHTML = `<b>[${msg.time}] ${msg.sender}:</b> ${msg.text}`;
+                        const formattedSender = formatPlayerName(msg.sender);
+                        div.innerHTML = `<b>[${msg.time}]</b> ${formattedSender}: <span style="font-size: 11px;">${msg.text}</span>`;
                         chatBox.appendChild(div);
                     });
                     chatBox.scrollTop = chatBox.scrollHeight;
