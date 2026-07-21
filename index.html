@@ -6,7 +6,8 @@
     <title>Мафия Онлайн</title>
     <style>
         body {
-            background-color: #4b6b94;
+            background: #4b6b94 url('Fone.jpg') no-repeat center center fixed;
+            background-size: cover;
             font-family: Tahoma, Arial, sans-serif;
             color: #000;
             margin: 0;
@@ -166,7 +167,7 @@
     <div class="window" id="login-screen">
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Лобби - Выбор комнаты</span>
-            <button id="open-admin-btn" style="font-size: 10px; padding: 2px 6px; background: #fff2cc; border-color: #d6b656;">👑 Админка</button>
+            <button id="open-admin-btn" style="font-size: 10px; padding: 2px 6px; background: #fff2cc; border-color: #d6b656;">Админка</button>
         </div>
         <div class="window-body">
             <p style="margin-top: 0;">Ваше имя игрока:</p>
@@ -194,7 +195,7 @@
     <div class="window hidden" id="admin-screen">
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Панель Администратора</span>
-            <button id="close-admin-btn" style="font-size: 10px; padding: 2px 6px;">❌ Закрыть</button>
+            <button id="close-admin-btn" style="font-size: 10px; padding: 2px 6px;">Закрыть</button>
         </div>
         <div class="window-body">
             <div style="margin-bottom: 10px; font-size: 11px; background: #fff; border: 1px inset #7f9db9; padding: 6px;">
@@ -218,7 +219,7 @@
             </div>
 
             <b style="font-size: 11px;">Привилегии:</b><br>
-            <button id="admin-dev-tag-btn" style="width: 100%; margin-top: 5px; font-size: 11px; background: #d4edda; border-color: #c3e6cb;">⭐ Активировать статус Разработчика [DEV]</button>
+            <button id="admin-dev-tag-btn" style="width: 100%; margin-top: 5px; font-size: 11px; background: #d4edda; border-color: #c3e6cb;">Активировать статус Разработчика [DEV]</button>
             <p id="dev-status-text" style="font-size: 10px; color: green; margin-top: 3px; display: none;">Статус [DEV] активен!</p>
         </div>
     </div>
@@ -228,15 +229,15 @@
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span id="room-title-bar">Мафия - Комната</span>
             <div style="display: flex; gap: 3px;">
-                <button id="ingame-admin-btn" style="font-size: 10px; padding: 2px 5px; background: #fff2cc; border-color: #d6b656;">⚙️ Админ</button>
-                <button id="leave-room-btn" style="font-size: 10px; padding: 2px 5px; background: #ffcccc; border-color: #ff9999;">🚪 Выйти</button>
+                <button id="ingame-admin-btn" style="font-size: 10px; padding: 2px 5px; background: #fff2cc; border-color: #d6b656;">Админ</button>
+                <button id="leave-room-btn" style="font-size: 10px; padding: 2px 5px; background: #ffcccc; border-color: #ff9999;">Выйти</button>
             </div>
         </div>
         <div class="window-body">
             <div class="status-box" id="role-display">Ваша роль: Ожидание...</div>
 
             <div style="margin-bottom: 10px;">
-                <button id="start-btn" class="hidden" style="width: 100%;">🎲 Начать игру</button>
+                <button id="start-btn" class="hidden" style="width: 100%;">Начать игру</button>
                 <button id="next-phase-btn" class="hidden" style="width: 100%; background: #d4edda; border-color: #c3e6cb;"></button>
             </div>
             
@@ -359,7 +360,7 @@
         xpCloseX.addEventListener("click", hideXpError);
 
         let playerName = "";
-        let isDevUser = false; // Флаг разработчика
+        let isDevUser = false;
         let roomCode = "";
         let hasActed = false;
         let lastStatus = "waiting";
@@ -368,11 +369,9 @@
         let unsubscribeAdminRooms = null;
         let allRoomsCache = [];
 
-        // Очистка и фильтрация ника
         function sanitizeAndValidateName(rawName) {
             let clean = rawName.trim();
 
-            // Проверка на фейковый DEV / Admin тег
             const forbiddenKeywords = ["dev", "[dev]", "admin", "administrator", "разработчик", "админ"];
             const lower = clean.toLowerCase();
             
@@ -383,7 +382,6 @@
                 }
             }
 
-            // Проверка на символы и HTML
             if (clean.includes("ㅤ") || clean.includes("<") || clean.includes(">")) {
                 showXpError("Использование невидимых символов и HTML-тегов запрещено!");
                 return null;
@@ -397,7 +395,6 @@
             return clean;
         }
 
-        // Красивое отображение имени (DEV тег рисуется только если у игрока есть флаг isDev)
         function renderFormattedPlayerName(playerObj) {
             let safeName = playerObj.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             if (playerObj.isDev) {
@@ -535,13 +532,11 @@
             }
         });
 
-        // Активация официального DEV-статуса
         adminDevTagBtn.addEventListener("click", async () => {
             isDevUser = true;
             devStatusText.style.display = "block";
             showXpError("Вам успешно выдан статус [DEV]!");
 
-            // Если игрок уже в комнате — обновляем его статус в базе
             if (roomCode && playerName) {
                 try {
                     const roomRef = doc(db, "rooms", roomCode);
@@ -571,9 +566,9 @@
                 const rData = room.data;
                 const playersCount = rData.players ? rData.players.length : 0;
                 let statusText = "Ожидание";
-                if (rData.status === "night") statusText = "🌙 Ночь";
-                if (rData.status === "day") statusText = "☀️ День";
-                if (rData.status === "ended") statusText = "🏁 Игра окончена";
+                if (rData.status === "night") statusText = "Ночь";
+                if (rData.status === "day") statusText = "День";
+                if (rData.status === "ended") statusText = "Игра окончена";
 
                 const div = document.createElement("div");
                 div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #7f9db9; padding: 6px; margin-bottom: 4px; font-size: 11px;";
@@ -728,7 +723,7 @@
                         sender: "Система",
                         isDevSender: false,
                         time: new Date().toLocaleTimeString().slice(0, 5),
-                        text: `🚪 Игрок ${targetPlayerName} покинул комнату.`
+                        text: `Игрок ${targetPlayerName} покинул комнату.`
                     }) : data.messages
                 });
 
@@ -790,7 +785,7 @@
                 players: players,
                 nightActions: {},
                 dayVotes: {},
-                messages: arrayUnion({ sender: "Система", isDevSender: false, time: new Date().toLocaleTimeString().slice(0, 5), text: "🎲 Игра началась! Наступила ночь." })
+                messages: arrayUnion({ sender: "Система", isDevSender: false, time: new Date().toLocaleTimeString().slice(0, 5), text: "Игра началась! Наступила ночь." })
             });
         });
 
@@ -827,7 +822,7 @@
                 if (me.role === "Шериф") {
                     let targetPlayer = data.players.find(p => p.name === targetValue);
                     let isMafia = targetPlayer && targetPlayer.role === "Мафия";
-                    lastSheriffResult = `🔍 Результат проверки (${targetValue}): это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.`;
+                    lastSheriffResult = `Результат проверки (${targetValue}): это ${isMafia ? '<b>МАФИЯ</b>' : '<b>мирный житель</b>'}.`;
                 }
 
                 await updateDoc(roomRef, { nightActions: actions });
@@ -865,7 +860,7 @@
                     if (act.role === "Шериф") sheriffTarget = act.target;
                 }
 
-                let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
+                let nightLog = "Наступил день. Итоги ночи:<br>";
 
                 if (blockedTarget) {
                     if (blockedTarget === mafiaTarget) {
@@ -905,7 +900,7 @@
                 const aliveCivilians = players.filter(p => p.alive && p.role !== "Мафия").length;
 
                 if (aliveMafia >= aliveCivilians) {
-                    nightLog += "<br>🔴 <b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.<br><br>🏁 <i>Комната будет удалена через 5 секунд...</i>";
+                    nightLog += "<br><b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.<br><br><i>Комната будет удалена через 5 секунд...</i>";
                     
                     await updateDoc(roomRef, {
                         status: "ended",
@@ -948,7 +943,7 @@
                     }
                 }
 
-                let dayLog = "☀️ Итоги дневного голосования:<br>";
+                let dayLog = "Итоги дневного голосования:<br>";
                 if (lynched) {
                     let victim = players.find(p => p.name === lynched);
                     if (victim) {
@@ -956,7 +951,7 @@
                         dayLog += `• Город решил изгнать игрока <b>${victim.name}</b>. Это был **${victim.role}**!<br>`;
 
                         if (victim.role === "Мафия") {
-                            dayLog += "<br>🏆 <b>ГОРОД ПОБЕДИЛ!</b> Мафия была изгнана из города.<br><br>🏁 <i>Комната будет удалена через 5 секунд...</i>";
+                            dayLog += "<br><b>ГОРОД ПОБЕДИЛ!</b> Мафия была изгнана из города.<br><br><i>Комната будет удалена через 5 секунд...</i>";
                             
                             await updateDoc(roomRef, {
                                 status: "ended",
@@ -975,7 +970,7 @@
                     dayLog += "• Город никого не изгнал.<br>";
                 }
 
-                dayLog += "<br>🌙 Наступает ночь...";
+                dayLog += "<br>Наступает ночь...";
                 await updateDoc(roomRef, {
                     status: "night",
                     players: players,
@@ -1039,9 +1034,9 @@
                 if (data.host === playerName && data.status !== "waiting" && data.status !== "ended") {
                     nextPhaseBtn.classList.remove("hidden");
                     if (data.status === "night") {
-                        nextPhaseBtn.innerText = "☀️ Завершить ночь / Наступит день";
+                        nextPhaseBtn.innerText = "Завершить ночь / Наступит день";
                     } else if (data.status === "day") {
-                        nextPhaseBtn.innerText = "🌙 Подвести итоги дня / Наступит ночь";
+                        nextPhaseBtn.innerText = "Подвести итоги дня / Наступит ночь";
                     }
                 } else {
                     nextPhaseBtn.classList.add("hidden");
@@ -1071,7 +1066,7 @@
                         actionBtn.classList.add("hidden");
                         skipBtn.classList.add("hidden");
                     } else if (!me.alive) {
-                        roleDisplay.innerText = `Ваша роль: ${me.role} (Мертв 💀)`;
+                        roleDisplay.innerText = `Ваша роль: ${me.role} (Мертв)`;
                         actionTitle.innerText = "Наблюдение";
                         actionInstruction.innerText = "Вы погибли и можете только общаться в чате.";
                         targetSelect.classList.add("hidden");
@@ -1083,7 +1078,7 @@
                         if (data.status === "night") {
                             actionTitle.innerText = "Действие (Ночь):";
                             if (me.role === "Мирный") {
-                                actionInstruction.innerText = "🌙 Вы мирный житель, спите...";
+                                actionInstruction.innerText = "Вы мирный житель, спите...";
                                 targetSelect.classList.add("hidden");
                                 actionBtn.classList.add("hidden");
                                 skipBtn.classList.add("hidden");
@@ -1130,7 +1125,7 @@
                         } else if (data.status === "day") {
                             actionTitle.innerText = "Голосование (День):";
                             if (!hasActed) {
-                                actionInstruction.innerText = "☀️ Выберите, кого изгнать городом, или пропустите:";
+                                actionInstruction.innerText = "Выберите, кого изгнать городом, или пропустите:";
                                 
                                 const currentSelected = targetSelect.value;
                                 targetSelect.innerHTML = "";
@@ -1178,10 +1173,10 @@
         }
 
         function getInstruction(role) {
-            if (role === "Мафия") return "🌙 Выберите жертву для устранения:";
-            if (role === "Шериф") return "🌙 Выберите игрока для проверки:";
-            if (role === "Доктор") return "🌙 Выберите игрока для лечения:";
-            if (role === "Путана") return "🌙 Выберите игрока для блокировки:";
+            if (role === "Мафия") return "Выберите жертву для устранения:";
+            if (role === "Шериф") return "Выберите игрока для проверки:";
+            if (role === "Доктор") return "Выберите игрока для лечения:";
+            if (role === "Путана") return "Выберите игрока для блокировки:";
             return "";
         }
 
