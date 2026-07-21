@@ -265,16 +265,16 @@
             subscribeToRoom();
         }
 
-        // Старт игры хостом
+        // Старт игры хостом (распределение 4 ролей)
         startBtn.addEventListener("click", async () => {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
             if (!roomSnap.exists()) return;
             
             let players = roomSnap.data().players;
-            if (players.length < 3) { alert("Нужно минимум 3 игрока для ролей (Мафия, Шериф, Путана/Мирный)!"); return; }
+            if (players.length < 4) { alert("Нужно минимум 4 игрока для ролей (Мафия, Шериф, Доктор, Путана)!"); return; }
 
-            const rolesPool = ["Мафия", "Шериф", "Путана"];
+            const rolesPool = ["Мафия", "Шериф", "Доктор", "Путана"];
             while (rolesPool.length < players.length) rolesPool.push("Мирный");
             rolesPool.sort(() => Math.random() - 0.5);
 
@@ -285,7 +285,7 @@
                 status: "night",
                 players: players,
                 nightActions: {},
-                messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: "🎲 Игра началась! Наступила ночь. Роли распределены." })
+                messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: "🎲 Игра началась! Наступила ночь. Роли распределены по порядку." })
             });
         });
 
@@ -305,12 +305,12 @@
             hasActed = true;
             actionBtn.classList.add("hidden");
             targetSelect.classList.add("hidden");
-            actionInstruction.innerText = "Ход принят. Ожидание остальных игроков...";
+            actionInstruction.innerText = "Ход принят. Ожидание рассвета...";
 
             await updateDoc(roomRef, { nightActions: actions });
         });
 
-        // Кнопка хоста для перехода от ночи к дню с обработкой убийств
+        // Переход ночи в день и обработка поочередных действий
         nextPhaseBtn.addEventListener("click", async () => {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
@@ -319,35 +319,58 @@
 
             let players = data.players;
             let actions = data.nightActions || {};
+            
             let mafiaTarget = null;
+            let doctorTarget = null;
             let blockedTarget = null;
-            let sheriffCheck = null;
+            let sheriffTarget = null;
+            let sheriffName = null;
 
-            // Обрабатываем ночные действия
+            // Разбираем действия по ролям
             for (let pName in actions) {
                 let act = actions[pName];
                 if (act.role === "Мафия") mafiaTarget = act.target;
+                if (act.role === "Доктор") doctorTarget = act.target;
                 if (act.role === "Путана") blockedTarget = act.target;
-                if (act.role === "Шериф") sheriffCheck = act;
+                if (act.role === "Шериф") {
+                    sheriffTarget = act.target;
+                    sheriffName = pName;
+                }
             }
 
             let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
 
-            // Если путана заблокировала мафию — убийства нет
-            if (mafiaTarget && mafiaTarget === blockedTarget) {
-                nightLog += "• Ночью было тихо: мафия пришла к жертве, но ее отвлекла путана!<br>";
-                mafiaTarget = null;
+            // 1. Путана блокирует цель
+            if (blockedTarget && blockedTarget === mafiaTarget) {
+                nightLog += "• Путана навестила мафию и отвлекла ее от темных дел!<br>";
+                mafiaTarget = null; // мафия заблокирована
+            } else if (blockedTarget) {
+                nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b> (он заблокирован).<br>`;
             }
 
-            // Убийство мафии
-            if (mafiaTarget) {
+            // 2. Доктор лечит
+            let saved = false;
+            if (mafiaTarget && mafiaTarget === doctorTarget) {
+                saved = true;
+                nightLog += `• Доктор успел вовремя и спас жизнь жертве мафии!<br>`;
+            }
+
+            // 3. Убийство мафии
+            if (mafiaTarget && !saved) {
                 let victim = players.find(p => p.name === mafiaTarget);
                 if (victim) {
                     victim.alive = false;
-                    nightLog += `• Город проснулся с ужасной новостью: убит **${victim.name}**!<br>`;
+                    nightLog += `• Город проснулся с ужасной новостью: убит <b>${victim.name}</b>!<br>`;
                 }
-            } else {
+            } else if (!mafiaTarget) {
                 nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
+            }
+
+            // 4. Проверка Шерифа (пишем лично шерифу в приватный лог или общим текстом результат)
+            if (sheriffTarget && sheriffName) {
+                let targetPlayer = players.find(p => p.name === sheriffTarget);
+                let isMafia = targetPlayer && targetPlayer.role === "Мафия";
+                nightLog += `• [Шериф ${sheriffName}] проверил ${sheriffTarget}: это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.<br>`;
             }
 
             await updateDoc(roomRef, {
@@ -380,21 +403,18 @@
                 if (!docSnap.exists()) return;
                 const data = docSnap.data();
 
-                // Управление кнопкой старта для хоста
                 if (data.host === playerName && data.status === "waiting") {
                     startBtn.classList.remove("hidden");
                 } else {
                     startBtn.classList.add("hidden");
                 }
 
-                // Кнопка перехода фазы (доступна хосту во время ночи)
                 if (data.host === playerName && data.status === "night") {
                     nextPhaseBtn.classList.remove("hidden");
                 } else {
                     nextPhaseBtn.classList.add("hidden");
                 }
 
-                // Список игроков
                 playersList.innerHTML = "";
                 data.players.forEach(p => {
                     const li = document.createElement("li");
@@ -419,7 +439,7 @@
 
                         if (data.status === "night") {
                             if (me.role === "Мирный") {
-                                actionInstruction.innerText = "Ночь. Вы мирный житель, спите...";
+                                actionInstruction.innerText = "🌙 Ночь. Вы мирный житель, спите...";
                                 targetSelect.classList.add("hidden");
                                 actionBtn.classList.add("hidden");
                             } else {
@@ -437,21 +457,20 @@
                                     targetSelect.classList.remove("hidden");
                                     actionBtn.classList.remove("hidden");
                                 } else {
-                                    actionInstruction.innerText = "Ваш выбор принят. Ждите утро.";
+                                    actionInstruction.innerText = "Ваш ход принят. Ждем остальных...";
                                     targetSelect.classList.add("hidden");
                                     actionBtn.classList.add("hidden");
                                 }
                             }
                         } else if (data.status === "day") {
                             hasActed = false;
-                            actionInstruction.innerText = "Наступил день. Обсуждайте события в чате!";
+                            actionInstruction.innerText = "☀️ Наступил день. Обсуждайте события в чате!";
                             targetSelect.classList.add("hidden");
                             actionBtn.classList.add("hidden");
                         }
                     }
                 }
 
-                // Вывод сообщений чата
                 if (data.messages) {
                     chatBox.innerHTML = "";
                     data.messages.forEach(msg => {
@@ -466,9 +485,10 @@
         }
 
         function getInstruction(role) {
-            if (role === "Мафия") return "Выберите жертву для убийства:";
-            if (role === "Шериф") return "Выберите игрока для проверки:";
-            if (role === "Путана") return "Выберите игрока для блокировки:";
+            if (role === "Мафия") return "🌙 Выберите жертву для устранения:";
+            if (role === "Шериф") return "🌙 Выберите игрока для проверки:";
+            if (role === "Доктор") return "🌙 Выберите игрока для лечения:";
+            if (role === "Путана") return "🌙 Выберите игрока для блокировки:";
             return "";
         }
 
