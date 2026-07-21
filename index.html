@@ -39,7 +39,7 @@
         
         input, button, select {
             font-family: Tahoma, Arial, sans-serif;
-            font-size: 14px; /* Увеличено для удобства нажатия на мобильных */
+            font-size: 14px;
             border: 1px solid #7f9db9;
             padding: 6px;
             background: #fff;
@@ -53,7 +53,6 @@
             margin: 2px;
         }
 
-        /* Адаптивный контейнер для блоков игроков и действий */
         .game-grid {
             display: flex;
             gap: 10px;
@@ -126,7 +125,7 @@
 
             <div style="margin-bottom: 10px;">
                 <button id="start-btn" class="hidden" style="width: 100%;">🎲 Начать игру</button>
-                <button id="next-phase-btn" class="hidden" style="width: 100%; background: #d4edda; border-color: #c3e6cb;">🌙 Завершить день / Наступит ночь</button>
+                <button id="next-phase-btn" class="hidden" style="width: 100%; background: #d4edda; border-color: #c3e6cb;"></button>
             </div>
             
             <div class="game-grid">
@@ -198,6 +197,7 @@
         let playerName = "";
         let roomCode = "";
         let hasActed = false;
+        let lastStatus = "waiting";
 
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
@@ -313,7 +313,6 @@
 
             players.forEach((p, i) => { p.role = rolesPool[i]; p.alive = true; });
 
-            hasActed = false;
             await updateDoc(roomRef, {
                 status: "night",
                 players: players,
@@ -362,9 +361,80 @@
             if (!roomSnap.exists()) return;
             const data = roomSnap.data();
 
-            if (data.status === "night") return;
+            if (data.status === "night") {
+                let players = data.players;
+                let actions = data.nightActions || {};
+                
+                let mafiaTarget = null;
+                let doctorTarget = null;
+                let blockedTarget = null;
+                let sheriffTarget = null;
+                let sheriffName = null;
 
-            if (data.status === "day") {
+                for (let pName in actions) {
+                    let act = actions[pName];
+                    if (act.role === "Мафия") mafiaTarget = act.target;
+                    if (act.role === "Доктор") doctorTarget = act.target;
+                    if (act.role === "Путана") blockedTarget = act.target;
+                    if (act.role === "Шериф") {
+                        sheriffTarget = act.target;
+                        sheriffName = pName;
+                    }
+                }
+
+                let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
+
+                if (blockedTarget && blockedTarget === mafiaTarget) {
+                    nightLog += "• Путана отвлекла мафию, убийство сорвалось!<br>";
+                    mafiaTarget = null;
+                } else if (blockedTarget) {
+                    nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b>.<br>`;
+                }
+
+                let saved = false;
+                if (mafiaTarget && mafiaTarget === doctorTarget) {
+                    saved = true;
+                    nightLog += `• Доктор вылечил раненого игрока <b>${mafiaTarget}</b>!<br>`;
+                }
+
+                if (mafiaTarget && !saved) {
+                    let victim = players.find(p => p.name === mafiaTarget);
+                    if (victim) {
+                        victim.alive = false;
+                        nightLog += `• Город проснулся с ужасной новостью: убит <b>${victim.name}</b> (${victim.role})!<br>`;
+                    }
+                } else if (!mafiaTarget) {
+                    nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
+                }
+
+                if (sheriffTarget && sheriffName) {
+                    let targetPlayer = players.find(p => p.name === sheriffTarget);
+                    let isMafia = targetPlayer && targetPlayer.role === "Мафия";
+                    nightLog += `• [Шериф ${sheriffName}] проверил ${sheriffTarget}: это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.<br>`;
+                }
+
+                const aliveMafia = players.filter(p => p.alive && p.role === "Мафия").length;
+                const aliveCivilians = players.filter(p => p.alive && p.role !== "Мафия").length;
+
+                if (aliveMafia >= aliveCivilians) {
+                    nightLog += "<br>🔴 <b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.";
+                    await updateDoc(roomRef, {
+                        status: "ended",
+                        players: players,
+                        nightActions: {},
+                        messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
+                    });
+                    return;
+                }
+
+                await updateDoc(roomRef, {
+                    status: "day",
+                    players: players,
+                    nightActions: {},
+                    dayVotes: {},
+                    messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
+                });
+            } else if (data.status === "day") {
                 let players = data.players;
                 let votes = data.dayVotes || {};
                 let counts = {};
@@ -404,7 +474,7 @@
                         }
                     }
                 } else {
-                    dayLog += "• Город никого не изгнал (все пропустили голос или голоса разделились).<br>";
+                    dayLog += "• Город никого не изгнал.<br>";
                 }
 
                 dayLog += "<br>🌙 Наступает ночь...";
@@ -415,7 +485,6 @@
                     nightActions: {},
                     messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: dayLog })
                 });
-                hasActed = false;
             }
         });
 
@@ -438,18 +507,25 @@
                 if (!docSnap.exists()) return;
                 const data = docSnap.data();
 
+                // Сбрасываем флаг хода игрока при изменении статуса (фазы) игры на сервере
+                if (data.status !== lastStatus) {
+                    hasActed = false;
+                    lastStatus = data.status;
+                }
+
                 if (data.host === playerName && data.status === "waiting") {
                     startBtn.classList.remove("hidden");
                 } else {
                     startBtn.classList.add("hidden");
                 }
 
-                if (data.host === playerName && data.status === "night") {
-                    nextPhaseBtn.innerText = "☀️ Завершить ночь / Наступит день";
+                if (data.host === playerName && data.status !== "waiting" && data.status !== "ended") {
                     nextPhaseBtn.classList.remove("hidden");
-                } else if (data.host === playerName && data.status === "day") {
-                    nextPhaseBtn.innerText = "🌙 Подвести итоги дня / Наступит ночь";
-                    nextPhaseBtn.classList.remove("hidden");
+                    if (data.status === "night") {
+                        nextPhaseBtn.innerText = "☀️ Завершить ночь / Наступит день";
+                    } else if (data.status === "day") {
+                        nextPhaseBtn.innerText = "🌙 Подвести итоги дня / Наступит ночь";
+                    }
                 } else {
                     nextPhaseBtn.classList.add("hidden");
                 }
@@ -530,6 +606,7 @@
                                     }
                                 });
                                 targetSelect.classList.remove("hidden");
+                                actionBtn.classList.0 && actionBtn.classList.remove("hidden");
                                 actionBtn.classList.remove("hidden");
                                 skipBtn.classList.remove("hidden");
                             } else {
@@ -554,90 +631,6 @@
                 }
             });
         }
-
-        // Автоматическая обработка ночных ходов хостом при нажатии на кнопку перехода в день
-        nextPhaseBtn.addEventListener("click", async () => {
-            const roomRef = doc(db, "rooms", roomCode);
-            const roomSnap = await getDoc(roomRef);
-            if (!roomSnap.exists()) return;
-            const data = roomSnap.data();
-
-            if (data.status === "night") {
-                let players = data.players;
-                let actions = data.nightActions || {};
-                
-                let mafiaTarget = null;
-                let doctorTarget = null;
-                let blockedTarget = null;
-                let sheriffTarget = null;
-                let sheriffName = null;
-
-                for (let pName in actions) {
-                    let act = actions[pName];
-                    if (act.role === "Мафия") mafiaTarget = act.target;
-                    if (act.role === "Доктор") doctorTarget = act.target;
-                    if (act.role === "Путана") blockedTarget = act.target;
-                    if (act.role === "Шериф") {
-                        sheriffTarget = act.target;
-                        sheriffName = pName;
-                    }
-                }
-
-                let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
-
-                if (blockedTarget && blockedTarget === mafiaTarget) {
-                    nightLog += "• Путана отвлекла мафию, убийство сорвалось!<br>";
-                    mafiaTarget = null;
-                } else if (blockedTarget) {
-                    nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b>.<br>`;
-                }
-
-                let saved = false;
-                if (mafiaTarget && mafiaTarget === doctorTarget) {
-                    saved = true;
-                    nightLog += `• Доктор вылечил раненого игрока <b>${mafiaTarget}</b>!<br>`;
-                }
-
-                if (mafiaTarget && !saved) {
-                    let victim = players.find(p => p.name === mafiaTarget);
-                    if (victim) {
-                        victim.alive = false;
-                        nightLog += `• Город проснулся с ужасной новостью: убит <b>${victim.name}</b> (${victim.role})!<br>`;
-                    }
-                } else if (!mafiaTarget) {
-                    nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
-                }
-
-                if (sheriffTarget && sheriffName) {
-                    let targetPlayer = players.find(p => p.name === sheriffTarget);
-                    let isMafia = targetPlayer && targetPlayer.role === "Мафия";
-                    nightLog += `• [Шериф ${sheriffName}] проверил ${sheriffTarget}: это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.<br>`;
-                }
-
-                const aliveMafia = players.filter(p => p.alive && p.role === "Мафия").length;
-                const aliveCivilians = players.filter(p => p.alive && p.role !== "Мафия").length;
-
-                if (aliveMafia >= aliveCivilians) {
-                    nightLog += "<br>🔴 <b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.";
-                    await updateDoc(roomRef, {
-                        status: "ended",
-                        players: players,
-                        nightActions: {},
-                        messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
-                    });
-                    return;
-                }
-
-                await updateDoc(roomRef, {
-                    status: "day",
-                    players: players,
-                    nightActions: {},
-                    dayVotes: {},
-                    messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
-                });
-                hasActed = false;
-            }
-        });
 
         function getInstruction(role) {
             if (role === "Мафия") return "🌙 Выберите жертву для устранения:";
