@@ -161,7 +161,7 @@
     <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -342,7 +342,7 @@
             lastSheriffResult = "";
         });
 
-        // ЧЕСТНЫЙ АЛГОРИТМ РАНДОМИЗАЦИИ (Алгоритм Фишера — Йетса)
+        // Честный алгоритм рандомизации (Фишер — Йетс)
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -364,7 +364,6 @@
                 rolesPool.push("Мирный");
             }
             
-            // Перемешиваем пул ролей по-настоящему случайно
             shuffleArray(rolesPool);
 
             players.forEach((p, i) => { 
@@ -477,13 +476,22 @@
                 const aliveCivilians = players.filter(p => p.alive && p.role !== "Мафия").length;
 
                 if (aliveMafia >= aliveCivilians) {
-                    nightLog += "<br>🔴 <b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.";
+                    nightLog += "<br>🔴 <b>МАФИЯ ПОБЕДИЛА!</b> Они захватили город.<br><br>🏁 <i>Комната будет удалена через 5 секунд...</i>";
+                    
                     await updateDoc(roomRef, {
                         status: "ended",
                         players: players,
                         nightActions: {},
                         messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: nightLog })
                     });
+
+                    setTimeout(async () => {
+                        try {
+                            await deleteDoc(roomRef);
+                        } catch (e) {
+                            console.error("Ошибка удаления комнаты:", e);
+                        }
+                    }, 5000);
                     return;
                 }
 
@@ -523,13 +531,22 @@
                         dayLog += `• Город решил изгнать игрока <b>${victim.name}</b>. Это был **${victim.role}**!<br>`;
 
                         if (victim.role === "Мафия") {
-                            dayLog += "<br>🏆 <b>ГОРОД ПОБЕДИЛ!</b> Мафия была изгнана из города.";
+                            dayLog += "<br>🏆 <b>ГОРОД ПОБЕДИЛ!</b> Мафия была изгнана из города.<br><br>🏁 <i>Комната будет удалена через 5 секунд...</i>";
+                            
                             await updateDoc(roomRef, {
                                 status: "ended",
                                 players: players,
                                 dayVotes: {},
                                 messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: dayLog })
                             });
+
+                            setTimeout(async () => {
+                                try {
+                                    await deleteDoc(roomRef);
+                                } catch (e) {
+                                    console.error("Ошибка удаления комнаты:", e);
+                                }
+                            }, 5000);
                             return;
                         }
                     }
@@ -564,11 +581,27 @@
         function subscribeToRoom() {
             const roomRef = doc(db, "rooms", roomCode);
             unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
-                if (!docSnap.exists()) return;
+                if (!docSnap.exists()) {
+                    // Если комната была удалена (например, закончилась игра), выкидываем игрока в лобби
+                    if (gameScreen && !gameScreen.classList.contains("hidden")) {
+                        alert("Игра завершена, комната удалена.");
+                        if (unsubscribeRoom) {
+                            unsubscribeRoom();
+                            unsubscribeRoom = null;
+                        }
+                        gameScreen.classList.add("hidden");
+                        loginScreen.classList.remove("hidden");
+                        roomCode = "";
+                        hasActed = false;
+                        lastSheriffResult = "";
+                    }
+                    return;
+                }
+
                 const data = docSnap.data();
 
                 if (data.status !== lastStatus) {
-                    hasActed = false; // Сбрасываем флаг действия при смене дня/ночи
+                    hasActed = false;
                     lastStatus = data.status;
                 }
 
@@ -608,7 +641,7 @@
                     } else if (data.status === "ended") {
                         roleDisplay.innerText = `Ваша роль была: ${me.role}`;
                         actionTitle.innerText = "Конец игры";
-                        actionInstruction.innerText = "Игра завершена.";
+                        actionInstruction.innerText = "Игра завершена. Комната удаляется...";
                         targetSelect.classList.add("hidden");
                         actionBtn.classList.add("hidden");
                         skipBtn.classList.add("hidden");
