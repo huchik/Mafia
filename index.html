@@ -442,13 +442,13 @@
             lastSheriffResult = "";
         });
 
-        // Честный алгоритм рандомизации (Фишер — Йетс)
+        // Улучшенный честный алгоритм рандомизации ролей
         function shuffleArray(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [array[i], array[j]] = [array[j], array[i]];
             }
-            return array;
+            return array.sort(() => Math.random() - 0.5);
         }
 
         startBtn.addEventListener("click", async () => {
@@ -467,7 +467,7 @@
             shuffleArray(rolesPool);
 
             players.forEach((p, i) => { 
-                p.role = rolesPool[i]; 
+                p.role = rolesPool[i] || "Мирный"; 
                 p.alive = true; 
             });
 
@@ -547,28 +547,41 @@
                     if (act.role === "Шериф") sheriffTarget = act.target;
                 }
 
+                let putanaName = null;
+                for (let pName in actions) {
+                    if (actions[pName].role === "Путана") {
+                        putanaName = pName;
+                        break;
+                    }
+                }
+
                 let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
 
+                // Если путана заскочила к мафии — путана умирает, а жертва мафии спасается
                 if (blockedTarget && blockedTarget === mafiaTarget) {
-                    nightLog += "• Путана отвлекла мафию, убийство сорвалось!<br>";
-                    mafiaTarget = null;
+                    nightLog += `• Путана (<b>${putanaName}</b>) заскочила к мафии и была убита!<br>`;
+                    let putanaPlayer = players.find(p => p.name === putanaName);
+                    if (putanaPlayer) putanaPlayer.alive = false;
+                    mafiaTarget = null; 
                 } else if (blockedTarget) {
                     nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b>.<br>`;
                 }
 
+                // Исцеление доктора (полностью отменяет убийство мафии)
                 let saved = false;
                 if (mafiaTarget && mafiaTarget === doctorTarget) {
                     saved = true;
                     nightLog += `• Доктор вылечил раненого игрока <b>${mafiaTarget}</b>!<br>`;
+                    mafiaTarget = null;
                 }
 
-                if (mafiaTarget && !saved) {
+                if (mafiaTarget) {
                     let victim = players.find(p => p.name === mafiaTarget);
                     if (victim) {
                         victim.alive = false;
                         nightLog += `• Город проснулся с ужасной новостью: убит <b>${victim.name}</b> (${victim.role})!<br>`;
                     }
-                } else if (!mafiaTarget) {
+                } else if (!saved) {
                     nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
                 }
 
@@ -769,7 +782,6 @@
                                 if (!hasActed) {
                                     actionInstruction.innerText = getInstruction(me.role);
                                     
-                                    // Сохраняем текущий выбор, если он уже был сделан
                                     const currentSelected = targetSelect.value;
                                     targetSelect.innerHTML = "";
                                     
@@ -784,7 +796,6 @@
                                         }
                                     });
 
-                                    // Восстанавливаем выбор или ставим первый элемент
                                     if (currentSelected && [...targetSelect.options].some(o => o.value === currentSelected)) {
                                         targetSelect.value = currentSelected;
                                     } else if (targetSelect.options.length > 0) {
