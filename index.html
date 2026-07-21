@@ -197,6 +197,12 @@
                 </div>
             </div>
 
+            <b style="font-size: 11px;">Бан игрока по нику:</b>
+            <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
+                <input type="text" id="admin-ban-nickname" placeholder="Точный ник игрока" style="flex: 1; font-size: 11px;">
+                <button id="admin-ban-btn" style="font-size: 11px; background: #f8d7da; border-color: #f5c6cb;">Забанить</button>
+            </div>
+
             <b style="font-size: 11px;">Смена ника игроку:</b>
             <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
                 <input type="text" id="admin-old-name" placeholder="Старый ник" style="flex: 1; font-size: 11px;">
@@ -310,6 +316,10 @@
         const ingameAdminBtn = document.getElementById("ingame-admin-btn");
         const adminOnlineCount = document.getElementById("admin-online-count");
         const adminOnlineList = document.getElementById("admin-online-list");
+        
+        const adminBanNickname = document.getElementById("admin-ban-nickname");
+        const adminBanBtn = document.getElementById("admin-ban-btn");
+
         const adminOldName = document.getElementById("admin-old-name");
         const adminNewName = document.getElementById("admin-new-name");
         const adminChangeNameBtn = document.getElementById("admin-change-name-btn");
@@ -421,6 +431,67 @@
                 adminOnlineList.innerHTML = onlineDetailsHTML || "<span style='color: #666;'>Никого нет в сети</span>";
             });
         }
+
+        // Функция проверки игрока на бан по нику
+        async function checkIsBanned(nameToCheck) {
+            try {
+                const banRef = doc(db, "settings", "bannedNicknames");
+                const banSnap = await getDoc(banRef);
+
+                if (banSnap.exists()) {
+                    const bannedList = banSnap.data().list || [];
+                    if (bannedList.includes(nameToCheck)) {
+                        showXpError(`Игрок "${nameToCheck}" заблокирован в этой игре!`);
+                        return true;
+                    }
+                }
+            } catch (err) {
+                console.error("Ошибка проверки бана по нику:", err);
+            }
+            return false;
+        }
+
+        // Кнопка бана игрока по нику в админке
+        adminBanBtn.addEventListener("click", async () => {
+            const nickToBan = adminBanNickname.value.trim();
+            if (!nickToBan) {
+                showXpError("Введите ник игрока для бана!");
+                return;
+            }
+
+            try {
+                const banRef = doc(db, "settings", "bannedNicknames");
+                const banSnap = await getDoc(banRef);
+                
+                let bannedList = [];
+                if (banSnap.exists()) {
+                    bannedList = banSnap.data().list || [];
+                }
+
+                if (!bannedList.includes(nickToBan)) {
+                    bannedList.push(nickToBan);
+                    await setDoc(banRef, { list: bannedList }, { merge: true });
+
+                    // Автоматически удаляем забаненного игрока из активных комнат, если он там сидит
+                    const roomsRef = collection(db, "rooms");
+                    const snapshot = await getDocs(roomsRef);
+                    for (const docSnap of snapshot.docs) {
+                        const rData = docSnap.data();
+                        if (rData.players && rData.players.some(p => p.name === nickToBan)) {
+                            await handlePlayerLeave(docSnap.id, nickToBan);
+                        }
+                    }
+
+                    showXpError(`Игрок "${nickToBan}" успешно забанен и выгнан из комнат!`);
+                    adminBanNickname.value = "";
+                } else {
+                    showXpError("Этот ник уже находится в списке банов.");
+                }
+            } catch (err) {
+                console.error(err);
+                showXpError("Ошибка при бане игрока.");
+            }
+        });
 
         adminChangeNameBtn.addEventListener("click", async () => {
             const oldN = adminOldName.value.trim();
@@ -566,6 +637,10 @@
             if (!playerName) { showXpError("Введите имя игрока!"); return; }
             if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
+            
+            // Проверяем бан по нику
+            if (await checkIsBanned(playerName)) return;
+
             if (!roomCode) { showXpError("Введите название комнаты!"); return; }
 
             try {
@@ -595,6 +670,9 @@
             if (!playerName) { showXpError("Сначала введите ваше имя вверху!"); return; }
             if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
+
+            // Проверяем бан по нику
+            if (await checkIsBanned(playerName)) return;
 
             roomCode = code;
             try {
@@ -647,7 +725,6 @@
             await handlePlayerLeave(currentRoomCode, currentName);
         });
 
-        // Функция удаления игрока и проверка на 0 игроков для удаления комнаты через 5 секунд
         async function handlePlayerLeave(targetRoomCode, targetPlayerName) {
             if (!targetRoomCode || !targetPlayerName) return;
 
@@ -665,7 +742,6 @@
                     newHost = updatedPlayers[0].name;
                 }
 
-                // Обновляем список игроков в комнате
                 await updateDoc(roomRef, {
                     players: updatedPlayers,
                     host: newHost,
@@ -676,14 +752,12 @@
                     }) : data.messages
                 });
 
-                // Строгая проверка: если в комнате ровно 0 игроков, запускаем таймер на 5 секунд
                 if (updatedPlayers.length === 0) {
                     setTimeout(async () => {
                         try {
                             const checkSnap = await getDoc(roomRef);
                             if (checkSnap.exists()) {
                                 const checkData = checkSnap.data();
-                                // Перепроверяем на случай, если кто-то зашел за эти 5 секунд
                                 if (checkData.players && checkData.players.length === 0) {
                                     await deleteDoc(roomRef);
                                     console.log(`Комната ${targetRoomCode} удалена (игроков: 0 более 5 сек).`);
@@ -700,7 +774,6 @@
             }
         }
 
-        // Моментальное срабатывание при закрытии вкладки или перезагрузке
         window.addEventListener("beforeunload", (e) => {
             if (roomCode && playerName) {
                 handlePlayerLeave(roomCode, playerName);
@@ -955,7 +1028,21 @@
 
         function subscribeToRoom() {
             const roomRef = doc(db, "rooms", roomCode);
-            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+            unsubscribeRoom = onSnapshot(roomRef, async (docSnap) => {
+                // Дополнительная проверка прямо во время игры: если игрока забанили, пока он сидит в комнате
+                if (await checkIsBanned(playerName)) {
+                    if (unsubscribeRoom) {
+                        unsubscribeRoom();
+                        unsubscribeRoom = null;
+                    }
+                    gameScreen.classList.add("hidden");
+                    loginScreen.classList.remove("hidden");
+                    roomCode = "";
+                    hasActed = false;
+                    await handlePlayerLeave(roomCode, playerName);
+                    return;
+                }
+
                 if (!docSnap.exists()) {
                     if (gameScreen && !gameScreen.classList.contains("hidden")) {
                         showXpError("Игра завершена, комната удалена.");
