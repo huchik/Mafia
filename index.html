@@ -183,7 +183,7 @@
         </div>
     </div>
 
-    <!-- АДМИН-ПАНЕЛЬ (Общая) -->
+    <!-- АДМИН-ПАНЕЛЬ -->
     <div class="window hidden" id="admin-screen">
         <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Панель Администратора</span>
@@ -200,7 +200,13 @@
             <b style="font-size: 11px;">Бан игрока по нику:</b>
             <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
                 <input type="text" id="admin-ban-nickname" placeholder="Точный ник игрока" style="flex: 1; font-size: 11px;">
-                <button id="admin-ban-btn" style="font-size: 11px; background: #f8d7da; border-color: #f5c6cb;">Забанить</button>
+                <button id="admin-ban-btn" style="font-size: 11px; background: #f8d7da; border-color: #f5c6cb;">Забанить ник</button>
+            </div>
+
+            <b style="font-size: 11px;">Бан игрока по IP:</b>
+            <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
+                <input type="text" id="admin-ban-ip" placeholder="IP адрес или ник для поиска IP" style="flex: 1; font-size: 11px;">
+                <button id="admin-ban-ip-btn" style="font-size: 11px; background: #f8d7da; border-color: #f5c6cb;">Забанить IP</button>
             </div>
 
             <b style="font-size: 11px;">Смена ника игроку:</b>
@@ -319,6 +325,8 @@
         
         const adminBanNickname = document.getElementById("admin-ban-nickname");
         const adminBanBtn = document.getElementById("admin-ban-btn");
+        const adminBanIp = document.getElementById("admin-ban-ip");
+        const adminBanIpBtn = document.getElementById("admin-ban-ip-btn");
 
         const adminOldName = document.getElementById("admin-old-name");
         const adminNewName = document.getElementById("admin-new-name");
@@ -359,6 +367,7 @@
         xpCloseX.addEventListener("click", hideXpError);
 
         let playerName = "";
+        let playerIp = "";
         let roomCode = "";
         let hasActed = false;
         let lastStatus = "waiting";
@@ -366,6 +375,19 @@
         let unsubscribeRoom = null;
         let unsubscribeAdminRooms = null;
         let allRoomsCache = [];
+
+        // Получение IP-адреса игрока при старте страницы
+        async function fetchPlayerIp() {
+            try {
+                const response = await fetch("https://api.ipify.org?format=json");
+                const data = await response.json();
+                playerIp = data.ip;
+            } catch (err) {
+                console.error("Не удалось получить IP:", err);
+                playerIp = "unknown_ip";
+            }
+        }
+        fetchPlayerIp();
 
         function formatPlayerName(name) {
             if (name.includes("[DEV]") || name.includes("style=\"color: red;")) {
@@ -422,7 +444,8 @@
                     if (data.players && data.players.length > 0) {
                         data.players.forEach(p => {
                             totalOnline++;
-                            onlineDetailsHTML += `• <b>${p.name}</b> <span style="color: #666;">[комната: ${rCode}]</span><br>`;
+                            let ipInfo = p.ip ? ` [IP: ${p.ip}]` : "";
+                            onlineDetailsHTML += `• <b>${p.name}</b> <span style="color: #666;">${ipInfo} [комната: ${rCode}]</span><br>`;
                         });
                     }
                 });
@@ -432,8 +455,10 @@
             });
         }
 
+        // Проверка бана по Нику и по IP
         async function checkIsBanned(nameToCheck) {
             try {
+                // Проверка бана по нику
                 const banRef = doc(db, "settings", "bannedNicknames");
                 const banSnap = await getDoc(banRef);
 
@@ -444,12 +469,27 @@
                         return true;
                     }
                 }
+
+                // Проверка бана по IP
+                if (playerIp && playerIp !== "unknown_ip") {
+                    const ipBanRef = doc(db, "settings", "bannedIPs");
+                    const ipBanSnap = await getDoc(ipBanRef);
+
+                    if (ipBanSnap.exists()) {
+                        const bannedIps = ipBanSnap.data().list || [];
+                        if (bannedIps.includes(playerIp)) {
+                            showXpError("Ваш IP-адрес заблокирован в этой игре!");
+                            return true;
+                        }
+                    }
+                }
             } catch (err) {
-                console.error("Ошибка проверки бана по нику:", err);
+                console.error("Ошибка проверки бана:", err);
             }
             return false;
         }
 
+        // Бан по нику
         adminBanBtn.addEventListener("click", async () => {
             const nickToBan = adminBanNickname.value.trim();
             if (!nickToBan) {
@@ -479,7 +519,7 @@
                         }
                     }
 
-                    showXpError(`Игрок "${nickToBan}" успешно забанен и выгнан из комнат!`);
+                    showXpError(`Игрок "${nickToBan}" успешно забанен по нику и выгнан!`);
                     adminBanNickname.value = "";
                 } else {
                     showXpError("Этот ник уже находится в списке банов.");
@@ -487,6 +527,76 @@
             } catch (err) {
                 console.error(err);
                 showXpError("Ошибка при бане игрока.");
+            }
+        });
+
+        // Бан по IP (или по нику игрока в поле IP)
+        adminBanIpBtn.addEventListener("click", async () => {
+            let targetIpOrNick = adminBanIp.value.trim();
+            if (!targetIpOrNick) {
+                showXpError("Введите IP или ник игрока для бана по IP!");
+                return;
+            }
+
+            let targetIp = targetIpOrNick;
+
+            // Если ввели не IP, а ник — пытаемся найти его IP среди активных игроков в комнатах
+            if (!targetIp.includes(".")) {
+                let found = false;
+                const roomsRef = collection(db, "rooms");
+                const snapshot = await getDocs(roomsRef);
+                for (const docSnap of snapshot.docs) {
+                    const rData = docSnap.data();
+                    if (rData.players) {
+                        const foundPlayer = rData.players.find(p => p.name === targetIpOrNick);
+                        if (foundPlayer && foundPlayer.ip) {
+                            targetIp = foundPlayer.ip;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    showXpError(`Не удалось найти IP для ника "${targetIpOrNick}". Введите IP вручную.`);
+                    return;
+                }
+            }
+
+            try {
+                const ipBanRef = doc(db, "settings", "bannedIPs");
+                const ipBanSnap = await getDoc(ipBanRef);
+                
+                let bannedIps = [];
+                if (ipBanSnap.exists()) {
+                    bannedIps = ipBanSnap.data().list || [];
+                }
+
+                if (!bannedIps.includes(targetIp)) {
+                    bannedIps.push(targetIp);
+                    await setDoc(ipBanRef, { list: bannedIps }, { merge: true });
+
+                    // Выгоняем всех игроков с этим IP из комнат
+                    const roomsRef = collection(db, "rooms");
+                    const snapshot = await getDocs(roomsRef);
+                    for (const docSnap of snapshot.docs) {
+                        const rData = docSnap.data();
+                        if (rData.players) {
+                            for (const p of rData.players) {
+                                if (p.ip === targetIp) {
+                                    await handlePlayerLeave(docSnap.id, p.name);
+                                }
+                            }
+                        }
+                    }
+
+                    showXpError(`IP-адрес "${targetIp}" успешно забанен!`);
+                    adminBanIp.value = "";
+                } else {
+                    showXpError("Этот IP-адрес уже забанен.");
+                }
+            } catch (err) {
+                console.error(err);
+                showXpError("Ошибка при бане IP.");
             }
         });
 
@@ -648,7 +758,7 @@
                 await setDoc(roomRef, {
                     host: playerName,
                     status: "waiting",
-                    players: [{ name: playerName, role: "Ожидание", alive: true }],
+                    players: [{ name: playerName, role: "Ожидание", alive: true, ip: playerIp }],
                     nightActions: {},
                     dayVotes: {},
                     messages: []
@@ -682,7 +792,7 @@
                 const exists = data.players.find(p => p.name === playerName);
                 if (!exists) {
                     await updateDoc(roomRef, {
-                        players: arrayUnion({ name: playerName, role: "Ожидание", alive: true })
+                        players: arrayUnion({ name: playerName, role: "Ожидание", alive: true, ip: playerIp })
                     });
                 }
 
