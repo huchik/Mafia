@@ -551,14 +551,24 @@
 
                 let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
 
-                // Если путана заблокировала мафию — мафия пропускает ход, а путана погибает
-                if (blockedTarget && blockedTarget === mafiaTarget) {
-                    nightLog += `• Путана (<b>${putanaName}</b>) заскочила к мафии и была убита!<br>`;
-                    let putanaPlayer = players.find(p => p.name === putanaName);
-                    if (putanaPlayer) putanaPlayer.alive = false;
-                    mafiaTarget = null; 
-                } else if (blockedTarget) {
-                    nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b>.<br>`;
+                // Проверка действий путаны
+                if (blockedTarget) {
+                    if (blockedTarget === mafiaTarget) {
+                        nightLog += `• Путана (<b>${putanaName}</b>) заскочила к мафии и была убита!<br>`;
+                        let putanaPlayer = players.find(p => p.name === putanaName);
+                        if (putanaPlayer) putanaPlayer.alive = false;
+                        mafiaTarget = null; 
+                    } else {
+                        nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b> и заблокировала его действия.<br>`;
+                        // Если путана заблокировала доктора, то доктор не сможет никого вылечить
+                        if (blockedTarget === doctorTarget) {
+                            doctorTarget = null;
+                        }
+                        // Если путана заблокировала шерифа, то шериф ничего не проверяет
+                        if (blockedTarget === sheriffTarget) {
+                            sheriffTarget = null;
+                        }
+                    }
                 }
 
                 // Исцеление доктора
