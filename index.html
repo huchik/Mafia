@@ -647,7 +647,7 @@
             await handlePlayerLeave(currentRoomCode, currentName);
         });
 
-        // Функция удаления игрока и таймера автоудаления пустой комнаты (через 5 секунд)
+        // Функция удаления игрока и проверка на 0 игроков для удаления комнаты через 5 секунд
         async function handlePlayerLeave(targetRoomCode, targetPlayerName) {
             if (!targetRoomCode || !targetPlayerName) return;
 
@@ -660,44 +660,41 @@
                 const data = roomSnap.data();
                 const updatedPlayers = (data.players || []).filter(p => p.name !== targetPlayerName);
 
-                if (updatedPlayers.length === 0) {
-                    // Если никого не осталось, очищаем массив игроков
-                    await updateDoc(roomRef, {
-                        players: []
-                    });
+                let newHost = data.host;
+                if (data.host === targetPlayerName && updatedPlayers.length > 0) {
+                    newHost = updatedPlayers[0].name;
+                }
 
-                    // Ждем 5 секунд, если никто не зашел — удаляем комнату окончательно
+                // Обновляем список игроков в комнате
+                await updateDoc(roomRef, {
+                    players: updatedPlayers,
+                    host: newHost,
+                    messages: updatedPlayers.length > 0 ? arrayUnion({
+                        sender: "Система",
+                        time: new Date().toLocaleTimeString().slice(0, 5),
+                        text: `🚪 Игрок ${targetPlayerName} покинул комнату.`
+                    }) : data.messages
+                });
+
+                // Строгая проверка: если в комнате ровно 0 игроков, запускаем таймер на 5 секунд
+                if (updatedPlayers.length === 0) {
                     setTimeout(async () => {
                         try {
                             const checkSnap = await getDoc(roomRef);
                             if (checkSnap.exists()) {
                                 const checkData = checkSnap.data();
-                                if (!checkData.players || checkData.players.length === 0) {
+                                // Перепроверяем на случай, если кто-то зашел за эти 5 секунд
+                                if (checkData.players && checkData.players.length === 0) {
                                     await deleteDoc(roomRef);
-                                    console.log(`Комната ${targetRoomCode} удалена (пусто 5 сек).`);
+                                    console.log(`Комната ${targetRoomCode} удалена (игроков: 0 более 5 сек).`);
                                 }
                             }
                         } catch (e) {
                             console.error("Ошибка при автоудалении пустой комнаты:", e);
                         }
                     }, 5000);
-
-                } else {
-                    let newHost = data.host;
-                    if (data.host === targetPlayerName) {
-                        newHost = updatedPlayers[0].name;
-                    }
-
-                    await updateDoc(roomRef, {
-                        players: updatedPlayers,
-                        host: newHost,
-                        messages: arrayUnion({
-                            sender: "Система",
-                            time: new Date().toLocaleTimeString().slice(0, 5),
-                            text: `🚪 Игрок ${targetPlayerName} покинул комнату.`
-                        })
-                    });
                 }
+
             } catch (err) {
                 console.error("Ошибка при удалении игрока из комнаты:", err);
             }
@@ -706,7 +703,6 @@
         // Моментальное срабатывание при закрытии вкладки или перезагрузке
         window.addEventListener("beforeunload", (e) => {
             if (roomCode && playerName) {
-                // Синхронный вызов, чтобы браузер успел отправить данные перед закрытием
                 handlePlayerLeave(roomCode, playerName);
             }
         });
