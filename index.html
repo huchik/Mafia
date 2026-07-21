@@ -48,9 +48,6 @@
             padding: 4px 12px;
             margin: 2px;
         }
-        button:active {
-            background: linear-gradient(to bottom, #e0e0e0, #f0f0f0);
-        }
 
         #chat-box {
             background: #fff;
@@ -67,10 +64,6 @@
             border-bottom: 1px dashed #eee;
             padding-bottom: 2px;
         }
-        .chat-msg a {
-            color: #0000ff;
-            text-decoration: underline;
-        }
         .status-box {
             background: #ffffcc;
             border: 1px solid #ffeb3b;
@@ -78,21 +71,10 @@
             margin-bottom: 10px;
             font-size: 11px;
         }
-        .room-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #fff;
-            border: 1px solid #7f9db9;
-            padding: 5px;
-            margin-bottom: 4px;
-            font-size: 11px;
-        }
     </style>
 </head>
 <body>
 
-    <!-- ОКНО ВХОДА И СОЗДАНИЯ КОМНАТ -->
     <div class="window" id="login-screen">
         <div class="window-title">Лобби - Выбор комнаты</div>
         <div class="window-body">
@@ -102,7 +84,7 @@
             <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
             
             <b>Создать новую комнату:</b><br>
-            <input type="text" id="new-room-code" style="width: 70%; margin-top: 5px;" placeholder="Название / код комнаты">
+            <input type="text" id="new-room-code" style="width: 70%; margin-top: 5px;" placeholder="Название комнаты">
             <button id="create-room-btn">Создать</button>
 
             <b style="display: block; margin-top: 15px;">Активные комнаты:</b>
@@ -112,16 +94,13 @@
         </div>
     </div>
 
-    <!-- ИГРОВОЕ ОКНО -->
     <div class="window hidden" id="game-screen">
         <div class="window-title" id="room-title-bar">Мафия - Комната</div>
         <div class="window-body">
-            <div class="status-box" id="role-display">
-                Ваша роль: Ожидание распределения...
-            </div>
+            <div class="status-box" id="role-display">Ваша роль: Ожидание...</div>
 
             <div style="margin-bottom: 10px;">
-                <button id="start-btn" class="hidden">🎲 Раздать роли и начать игру</button>
+                <button id="start-btn" class="hidden">🎲 Начать игру</button>
             </div>
             
             <div style="display: flex; gap: 10px;">
@@ -131,17 +110,17 @@
                 </div>
                 <div style="width: 50%;">
                     <b>Действие (Ночь):</b>
-                    <div id="action-panel" style="background: #eee; border: 1px solid #ccc; padding: 5px; height: 110px; font-size: 11px; margin-top: 5px;">
-                        <p id="action-instruction">Игра еще не началась.</p>
+                    <div style="background: #eee; border: 1px solid #ccc; padding: 5px; height: 110px; font-size: 11px; margin-top: 5px;">
+                        <p id="action-instruction">Игра не началась.</p>
                         <select id="target-select" style="width: 100%; margin-bottom: 5px;" class="hidden"></select>
-                        <button id="action-btn" class="hidden">Подтвердить ход</button>
+                        <button id="action-btn" class="hidden">Подтвердить</button>
                     </div>
                 </div>
             </div>
 
-            <b style="display: block; margin-top: 10px;">Чат комнаты:</b>
+            <b style="display: block; margin-top: 10px;">Чат:</b>
             <div id="chat-box"></div>
-            <input type="text" id="chat-input" placeholder="Сообщение или ссылка..." style="width: 78%;">
+            <input type="text" id="chat-input" placeholder="Сообщение..." style="width: 78%;">
             <button id="send-chat-btn">Отправить</button>
         </div>
     </div>
