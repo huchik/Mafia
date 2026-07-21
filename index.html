@@ -497,7 +497,6 @@
         adminDevTagBtn.addEventListener("click", () => {
             let currentVal = usernameInput.value.trim();
             currentVal = currentVal.replace(/\[DEV\]/gi, "").replace(/<[^>]*>/g, "").trim();
-            // Превращаем в официальный системный тег
             usernameInput.value = "[DEV] " + currentVal;
             showXpError("Жирный красный тег разработчика успешно выдан!");
         });
@@ -632,24 +631,8 @@
         leaveRoomBtn.addEventListener("click", async () => {
             if (!confirm("Вы действительно хотите выйти из комнаты?")) return;
 
-            try {
-                const roomRef = doc(db, "rooms", roomCode);
-                const roomSnap = await getDoc(roomRef);
-
-                if (roomSnap.exists()) {
-                    const data = roomSnap.data();
-                    const updatedPlayers = data.players.filter(p => p.name !== playerName);
-
-                    if (updatedPlayers.length > 0) {
-                        await updateDoc(roomRef, {
-                            players: updatedPlayers,
-                            messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: `🚪 Игрок ${playerName} покинул комнату.` })
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error("Ошибка при выходе:", err);
-            }
+            const currentRoomCode = roomCode;
+            const currentName = playerName;
 
             if (unsubscribeRoom) {
                 unsubscribeRoom();
@@ -661,6 +644,67 @@
             roomCode = "";
             hasActed = false;
             lastSheriffResult = "";
+
+            await handlePlayerLeave(currentRoomCode, currentName);
+        });
+
+        async function handlePlayerLeave(targetRoomCode, targetPlayerName) {
+            if (!targetRoomCode || !targetPlayerName) return;
+
+            try {
+                const roomRef = doc(db, "rooms", targetRoomCode);
+                const roomSnap = await getDoc(roomRef);
+
+                if (!roomSnap.exists()) return;
+
+                const data = roomSnap.data();
+                const updatedPlayers = (data.players || []).filter(p => p.name !== targetPlayerName);
+
+                if (updatedPlayers.length === 0) {
+                    await updateDoc(roomRef, {
+                        players: []
+                    });
+
+                    setTimeout(async () => {
+                        try {
+                            const checkSnap = await getDoc(roomRef);
+                            if (checkSnap.exists()) {
+                                const checkData = checkSnap.data();
+                                if (!checkData.players || checkData.players.length === 0) {
+                                    await deleteDoc(roomRef);
+                                    console.log(`Комната ${targetRoomCode} удалена (пусто 5 сек).`);
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Ошибка при автоудалении пустой комнаты:", e);
+                        }
+                    }, 5000);
+
+                } else {
+                    let newHost = data.host;
+                    if (data.host === targetPlayerName) {
+                        newHost = updatedPlayers[0].name;
+                    }
+
+                    await updateDoc(roomRef, {
+                        players: updatedPlayers,
+                        host: newHost,
+                        messages: arrayUnion({
+                            sender: "Система",
+                            time: new Date().toLocaleTimeString().slice(0, 5),
+                            text: `🚪 Игрок ${targetPlayerName} покинул комнату.`
+                        })
+                    });
+                }
+            } catch (err) {
+                console.error("Ошибка при удалении игрока из комнаты:", err);
+            }
+        }
+
+        window.addEventListener("beforeunload", () => {
+            if (roomCode && playerName) {
+                handlePlayerLeave(roomCode, playerName);
+            }
         });
 
         function shuffleArray(array) {
@@ -1049,7 +1093,7 @@
                                     }
                                 });
 
-                                if (currentSelected && [...targetStatusOptions].some(o => o.value === currentSelected)) {
+                                if (currentSelected && [...targetSelect.options].some(o => o.value === currentSelected)) {
                                     targetSelect.value = currentSelected;
                                 } else if (targetSelect.options.length > 0) {
                                     targetSelect.selectedIndex = 0;
