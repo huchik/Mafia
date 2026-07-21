@@ -249,6 +249,8 @@
             roomCode = newRoomCodeInput.value.trim();
 
             if (!playerName) { alert("Введите имя!"); return; }
+            if (playerName.length > 20) { alert("Ник не должен превышать 20 символов!"); return; }
+            if (playerName.includes("ㅤ")) { alert("Использование невидимого символа запрещено!"); return; }
             if (!roomCode) { alert("Введите название комнаты!"); return; }
 
             try {
@@ -276,6 +278,8 @@
         async function joinRoom(code) {
             playerName = usernameInput.value.trim();
             if (!playerName) { alert("Сначала введите ваше имя вверху!"); return; }
+            if (playerName.length > 20) { alert("Ник не должен превышать 20 символов!"); return; }
+            if (playerName.includes("ㅤ")) { alert("Использование невидимого символа запрещено!"); return; }
 
             roomCode = code;
             try {
