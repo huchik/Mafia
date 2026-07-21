@@ -357,7 +357,6 @@
         let unsubscribeAdminRooms = null;
         let allRoomsCache = [];
 
-        // Функция форматирования никнейма: твой тег жирный и красный, остальные — обычные мелкие
         function formatPlayerName(name) {
             if (name.includes("[DEV]") || name.includes("style=\"color: red;")) {
                 let cleanName = name.replace(/<[^>]*>/g, "").replace("[DEV]", "").trim();
@@ -648,6 +647,7 @@
             await handlePlayerLeave(currentRoomCode, currentName);
         });
 
+        // Функция удаления игрока и таймера автоудаления пустой комнаты (через 5 секунд)
         async function handlePlayerLeave(targetRoomCode, targetPlayerName) {
             if (!targetRoomCode || !targetPlayerName) return;
 
@@ -661,10 +661,12 @@
                 const updatedPlayers = (data.players || []).filter(p => p.name !== targetPlayerName);
 
                 if (updatedPlayers.length === 0) {
+                    // Если никого не осталось, очищаем массив игроков
                     await updateDoc(roomRef, {
                         players: []
                     });
 
+                    // Ждем 5 секунд, если никто не зашел — удаляем комнату окончательно
                     setTimeout(async () => {
                         try {
                             const checkSnap = await getDoc(roomRef);
@@ -701,8 +703,10 @@
             }
         }
 
-        window.addEventListener("beforeunload", () => {
+        // Моментальное срабатывание при закрытии вкладки или перезагрузке
+        window.addEventListener("beforeunload", (e) => {
             if (roomCode && playerName) {
+                // Синхронный вызов, чтобы браузер успел отправить данные перед закрытием
                 handlePlayerLeave(roomCode, playerName);
             }
         });
