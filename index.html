@@ -482,7 +482,10 @@
 
         actionBtn.addEventListener("click", async () => {
             const target = targetSelect.value;
-            if (!target) return;
+            if (!target) {
+                showXpError("Выберите игрока из списка!");
+                return;
+            }
             await sendAction(target);
         });
 
@@ -493,6 +496,7 @@
         async function sendAction(targetValue) {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
+            if (!roomSnap.exists()) return;
             const data = roomSnap.data();
 
             hasActed = true;
@@ -764,17 +768,33 @@
                             } else {
                                 if (!hasActed) {
                                     actionInstruction.innerText = getInstruction(me.role);
+                                    
+                                    // Сохраняем текущий выбор, если он уже был сделан
+                                    const currentSelected = targetSelect.value;
                                     targetSelect.innerHTML = "";
+                                    
+                                    let hasOptions = false;
                                     data.players.forEach(p => {
                                         if (p.name !== playerName && p.alive) {
                                             const opt = document.createElement("option");
                                             opt.value = p.name;
                                             opt.innerText = p.name;
                                             targetSelect.appendChild(opt);
+                                            hasOptions = true;
                                         }
                                     });
-                                    targetSelect.classList.remove("hidden");
-                                    actionBtn.classList.remove("hidden");
+
+                                    // Восстанавливаем выбор или ставим первый элемент
+                                    if (currentSelected && [...targetSelect.options].some(o => o.value === currentSelected)) {
+                                        targetSelect.value = currentSelected;
+                                    } else if (targetSelect.options.length > 0) {
+                                        targetSelect.selectedIndex = 0;
+                                    }
+
+                                    if (hasOptions) {
+                                        targetSelect.classList.remove("hidden");
+                                        actionBtn.classList.remove("hidden");
+                                    }
                                     skipBtn.classList.add("hidden");
                                 } else {
                                     if (me.role === "Шериф" && lastSheriffResult) {
@@ -791,7 +811,10 @@
                             actionTitle.innerText = "Голосование (День):";
                             if (!hasActed) {
                                 actionInstruction.innerText = "☀️ Выберите, кого изгнать городом, или пропустите:";
+                                
+                                const currentSelected = targetSelect.value;
                                 targetSelect.innerHTML = "";
+                                
                                 data.players.forEach(p => {
                                     if (p.alive) {
                                         const opt = document.createElement("option");
@@ -800,6 +823,13 @@
                                         targetSelect.appendChild(opt);
                                     }
                                 });
+
+                                if (currentSelected && [...targetSelect.options].some(o => o.value === currentSelected)) {
+                                    targetSelect.value = currentSelected;
+                                } else if (targetSelect.options.length > 0) {
+                                    targetSelect.selectedIndex = 0;
+                                }
+
                                 targetSelect.classList.remove("hidden");
                                 actionBtn.classList.remove("hidden");
                                 skipBtn.classList.remove("hidden");
