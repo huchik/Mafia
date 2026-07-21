@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -16,9 +16,11 @@ const db = getFirestore(app);
 
 const loginScreen = document.getElementById("login-screen");
 const gameScreen = document.getElementById("game-screen");
-const joinBtn = document.getElementById("join-btn");
 const usernameInput = document.getElementById("username");
-const roomCodeInput = document.getElementById("room-code");
+const newRoomCodeInput = document.getElementById("new-room-code");
+const createRoomBtn = document.getElementById("create-room-btn");
+const roomsListDiv = document.getElementById("rooms-list");
+
 const playersList = document.getElementById("players-list");
 const roomTitleBar = document.getElementById("room-title-bar");
 const roleDisplay = document.getElementById("role-display");
@@ -33,45 +35,115 @@ const actionBtn = document.getElementById("action-btn");
 let playerName = "";
 let roomCode = "";
 
-joinBtn.addEventListener("click", async () => {
-    playerName = usernameInput.value.trim();
-    roomCode = roomCodeInput.value.trim();
+// При запуске загружаем список всех комнат из Firestore в реальном времени
+import { query } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+function loadRoomsList() {
+    const roomsRef = collection(db, "rooms");
+    onSnapshot(roomsRef, (snapshot) => {
+        roomsListDiv.innerHTML = "";
+        if (snapshot.empty) {
+            roomsListDiv.innerHTML = "<p style='font-size: 11px; color: #666; padding: 5px;'>Нет активных комнат. Создайте свою!</p>";
+            return;
+        }
 
-    if (!playerName || !roomCode) {
-        alert("Заполните все поля!");
+        snapshot.forEach((docSnap) => {
+            const rCode = docSnap.id;
+            const rData = docSnap.data();
+            const playersCount = rData.players ? rData.players.length : 0;
+            const statusText = rData.status === "waiting" ? "Ожидание" : "Идет игра";
+
+            const div = document.createElement("div");
+            div.className = "room-item";
+            div.innerHTML = `
+                <span><b>${rCode}</b> (${statusText}, игроков: ${playersCount})</span>
+                <button data-code="${rCode}" class="join-room-btn">Войти</button>
+            `;
+            roomsListDiv.appendChild(div);
+        });
+
+        // Навешиваем клики на кнопки «Войти» в списке
+        document.querySelectorAll(".join-room-btn").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+                const targetCode = e.target.getAttribute("data-code");
+                await joinRoom(targetCode);
+            });
+        });
+    });
+}
+
+// Кнопка создания новой комнаты
+createRoomBtn.addEventListener("click", async () => {
+    playerName = usernameInput.value.trim();
+    roomCode = newRoomCodeInput.value.trim();
+
+    if (!playerName) {
+        alert("Введите ваше имя игрока!");
+        return;
+    }
+    if (!roomCode) {
+        alert("Введите название для комнаты!");
         return;
     }
 
     const roomRef = doc(db, "rooms", roomCode);
     const roomSnap = await getDoc(roomRef);
 
-    if (!roomSnap.exists()) {
-        await setDoc(roomRef, {
-            host: playerName,
-            status: "waiting",
-            players: [{ name: playerName, role: "Ожидание", alive: true }],
-            messages: []
-        });
-    } else {
-        const data = roomSnap.data();
-        if (data.status !== "waiting") {
-            alert("Игра уже началась в этой комнате!");
-            return;
-        }
-        const exists = data.players.find(p => p.name === playerName);
-        if (!exists) {
-            await updateDoc(roomRef, {
-                players: arrayUnion({ name: playerName, role: "Ожидание", alive: true })
-            });
-        }
+    if (roomSnap.exists()) {
+        alert("Комната с таким именем уже существует! Выберите другое или войдите в неё.");
+        return;
     }
 
+    // Создаем комнату
+    await setDoc(roomRef, {
+        host: playerName,
+        status: "waiting",
+        players: [{ name: playerName, role: "Ожидание", alive: true }],
+        messages: []
+    });
+
+    enterGameScreen();
+});
+
+// Функция входа в существующую комнату
+async function joinRoom(code) {
+    playerName = usernameInput.value.trim();
+    if (!playerName) {
+        alert("Сначала введите ваше имя игрока вверху!");
+        usernameInput.focus();
+        return;
+    }
+
+    roomCode = code;
+    const roomRef = doc(db, "rooms", roomCode);
+    const roomSnap = await getDoc(roomRef);
+
+    if (!roomSnap.exists()) {
+        alert("Комната не найдена!");
+        return;
+    }
+
+    const data = roomSnap.data();
+    if (data.status !== "waiting") {
+        alert("В этой комнате уже идет игра!");
+        return;
+    }
+
+    const exists = data.players.find(p => p.name === playerName);
+    if (!exists) {
+        await updateDoc(roomRef, {
+            players: arrayUnion({ name: playerName, role: "Ожидание", alive: true })
+        });
+    }
+
+    enterGameScreen();
+}
+
+function enterGameScreen() {
     loginScreen.classList.add("hidden");
     gameScreen.classList.remove("hidden");
     roomTitleBar.innerText = `Мафия - Комната: ${roomCode}`;
-
     subscribeToRoom();
-});
+}
 
 startBtn.addEventListener("click", async () => {
     const roomRef = doc(db, "rooms", roomCode);
@@ -229,3 +301,6 @@ function getInstructionForRole(role) {
     if (role === "Путана") return "Выберите игрока, к которому пойдете ночью:";
     return "";
 }
+
+// Запускаем подгрузку списка комнат при открытии сайта
+loadRoomsList();
