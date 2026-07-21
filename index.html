@@ -173,8 +173,11 @@
                 <button id="create-room-btn">Создать</button>
             </div>
 
-            <b style="display: block; margin-top: 15px;">Активные комнаты:</b>
-            <div id="rooms-list" style="background: #fff; border: 1px inset #7f9db9; height: 130px; overflow-y: auto; padding: 5px; margin-top: 5px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; margin-bottom: 5px;">
+                <b>Активные комнаты:</b>
+                <input type="text" id="search-room-input" placeholder="Поиск комнаты..." style="font-size: 11px; padding: 3px 6px; width: 140px;">
+            </div>
+            <div id="rooms-list" style="background: #fff; border: 1px inset #7f9db9; height: 130px; overflow-y: auto; padding: 5px;">
                 <p style="font-size: 11px; color: #666;">Загрузка комнат...</p>
             </div>
         </div>
@@ -188,8 +191,10 @@
         </div>
         <div class="window-body">
             <div style="margin-bottom: 10px; font-size: 11px; background: #fff; border: 1px inset #7f9db9; padding: 6px;">
-                <b>Статистика:</b><br>
-                Онлайн игроков во всех комнатах: <span id="admin-online-count" style="color: green; font-weight: bold;">0</span>
+                <b>Онлайн: <span id="admin-online-count" style="color: green; font-weight: bold;">0</span> игроков</b>
+                <div id="admin-online-list" style="margin-top: 5px; max-height: 80px; overflow-y: auto; border-top: 1px dashed #ccc; padding-top: 4px; color: #333;">
+                    Загрузка списка...
+                </div>
             </div>
 
             <b style="font-size: 11px;">Смена ника игроку:</b>
@@ -197,6 +202,12 @@
                 <input type="text" id="admin-old-name" placeholder="Старый ник" style="flex: 1; font-size: 11px;">
                 <input type="text" id="admin-new-name" placeholder="Новый ник" style="flex: 1; font-size: 11px;">
                 <button id="admin-change-name-btn" style="font-size: 11px;">Сменить</button>
+            </div>
+
+            <b style="font-size: 11px;">Удаление лобби (комнаты):</b>
+            <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
+                <input type="text" id="admin-room-to-delete" placeholder="Название комнаты" style="flex: 1; font-size: 11px;">
+                <button id="admin-delete-room-btn" style="font-size: 11px; background: #f8d7da; border-color: #f5c6cb;">Удалить</button>
             </div>
 
             <b style="font-size: 11px;">Быстрые действия разработчика:</b><br>
@@ -265,7 +276,7 @@
     <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -288,14 +299,18 @@
         const newRoomCodeInput = document.getElementById("new-room-code");
         const createRoomBtn = document.getElementById("create-room-btn");
         const roomsListDiv = document.getElementById("rooms-list");
+        const searchRoomInput = document.getElementById("search-room-input");
         const leaveRoomBtn = document.getElementById("leave-room-btn");
 
         const openAdminBtn = document.getElementById("open-admin-btn");
         const closeAdminBtn = document.getElementById("close-admin-btn");
         const adminOnlineCount = document.getElementById("admin-online-count");
+        const adminOnlineList = document.getElementById("admin-online-list");
         const adminOldName = document.getElementById("admin-old-name");
         const adminNewName = document.getElementById("admin-new-name");
         const adminChangeNameBtn = document.getElementById("admin-change-name-btn");
+        const adminRoomToDelete = document.getElementById("admin-room-to-delete");
+        const adminDeleteRoomBtn = document.getElementById("admin-delete-room-btn");
         const adminDevTagBtn = document.getElementById("admin-dev-tag-btn");
 
         const playersList = document.getElementById("players-list");
@@ -336,11 +351,13 @@
         let lastSheriffResult = "";
         let unsubscribeRoom = null;
         let unsubscribeAdminRooms = null;
+        let allRoomsCache = [];
 
-        // Открытие админки с паролем
         openAdminBtn.addEventListener("click", () => {
             const pwd = prompt("Введите пароль администратора:");
-            if (pwd === "Mamka228") {
+            
+            // Проверка закодированного пароля (Mamka228 -> TWFta2EyMjg=)
+            if (pwd && btoa(pwd) === "TWFta2EyMjg=") {
                 loginScreen.classList.add("hidden");
                 adminScreen.classList.remove("hidden");
                 startAdminListener();
@@ -358,22 +375,28 @@
             }
         });
 
-        // Слушатель для админки (сбор онлайна)
         function startAdminListener() {
             const roomsRef = collection(db, "rooms");
             unsubscribeAdminRooms = onSnapshot(roomsRef, (snapshot) => {
                 let totalOnline = 0;
+                let onlineDetailsHTML = "";
+
                 snapshot.forEach(docSnap => {
+                    const rCode = docSnap.id;
                     const data = docSnap.data();
-                    if (data.players) {
-                        totalOnline += data.players.length;
+                    if (data.players && data.players.length > 0) {
+                        data.players.forEach(p => {
+                            totalOnline++;
+                            onlineDetailsHTML += `• <b>${p.name}</b> <span style="color: #666;">[комната: ${rCode}]</span><br>`;
+                        });
                     }
                 });
+
                 adminOnlineCount.innerText = totalOnline;
+                adminOnlineList.innerHTML = onlineDetailsHTML || "<span style='color: #666;'>Никого нет в сети</span>";
             });
         }
 
-        // Смена ника через админку во всех комнатах
         adminChangeNameBtn.addEventListener("click", async () => {
             const oldN = adminOldName.value.trim();
             const newN = adminNewName.value.trim();
@@ -391,7 +414,6 @@
                     const rData = docSnap.data();
                     let changed = false;
                     
-                    // Обновляем в списке игроков
                     let players = rData.players.map(p => {
                         if (p.name === oldN) {
                             changed = true;
@@ -400,7 +422,6 @@
                         return p;
                     });
 
-                    // Обновляем хоста, если нужно
                     let host = rData.host;
                     if (host === oldN) {
                         host = newN;
@@ -422,7 +443,31 @@
             }
         });
 
-        // Выдача тега разработчика
+        adminDeleteRoomBtn.addEventListener("click", async () => {
+            const rCodeToDelete = adminRoomToDelete.value.trim();
+            if (!rCodeToDelete) {
+                showXpError("Введите название комнаты для удаления!");
+                return;
+            }
+
+            try {
+                const targetRoomRef = doc(db, "rooms", rCodeToDelete);
+                const targetSnap = await getDoc(targetRoomRef);
+
+                if (!targetSnap.exists()) {
+                    showXpError("Комната с таким названием не найдена!");
+                    return;
+                }
+
+                await deleteDoc(targetRoomRef);
+                showXpError(`Комната "${rCodeToDelete}" успешно удалена!`);
+                adminRoomToDelete.value = "";
+            } catch (err) {
+                console.error(err);
+                showXpError("Ошибка при удалении комнаты.");
+            }
+        });
+
         adminDevTagBtn.addEventListener("click", () => {
             const currentVal = usernameInput.value.trim();
             if (!currentVal.includes("[DEV]")) {
@@ -433,39 +478,59 @@
             }
         });
 
+        function renderRooms(roomsArray) {
+            roomsListDiv.innerHTML = "";
+            if (roomsArray.length === 0) {
+                roomsListDiv.innerHTML = "<p style='font-size: 11px; color: #666; padding: 5px;'>Комнаты не найдены.</p>";
+                return;
+            }
+
+            roomsArray.forEach(room => {
+                const rCode = room.code;
+                const rData = room.data;
+                const playersCount = rData.players ? rData.players.length : 0;
+                let statusText = "Ожидание";
+                if (rData.status === "night") statusText = "🌙 Ночь";
+                if (rData.status === "day") statusText = "☀️ День";
+                if (rData.status === "ended") statusText = "🏁 Игра окончена";
+
+                const div = document.createElement("div");
+                div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #7f9db9; padding: 6px; margin-bottom: 4px; font-size: 11px;";
+                div.innerHTML = `
+                    <span><b>${rCode}</b> (${statusText}, игроков: ${playersCount})</span>
+                    <button data-code="${rCode}" class="join-room-btn">Войти</button>
+                `;
+                roomsListDiv.appendChild(div);
+            });
+
+            document.querySelectorAll(".join-room-btn").forEach(btn => {
+                btn.addEventListener("click", async (e) => {
+                    const targetCode = e.target.getAttribute("data-code");
+                    await joinRoom(targetCode);
+                });
+            });
+        }
+
+        function filterAndRenderRooms() {
+            const query = searchRoomInput.value.trim().toLowerCase();
+            if (!query) {
+                renderRooms(allRoomsCache);
+                return;
+            }
+            const filtered = allRoomsCache.filter(r => r.code.toLowerCase().includes(query));
+            renderRooms(filtered);
+        }
+
+        searchRoomInput.addEventListener("input", filterAndRenderRooms);
+
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
             onSnapshot(roomsRef, (snapshot) => {
-                roomsListDiv.innerHTML = "";
-                if (snapshot.empty) {
-                    roomsListDiv.innerHTML = "<p style='font-size: 11px; color: #666; padding: 5px;'>Нет комнат. Создайте свою!</p>";
-                    return;
-                }
-
+                allRoomsCache = [];
                 snapshot.forEach((docSnap) => {
-                    const rCode = docSnap.id;
-                    const rData = docSnap.data();
-                    const playersCount = rData.players ? rData.players.length : 0;
-                    let statusText = "Ожидание";
-                    if (rData.status === "night") statusText = "🌙 Ночь";
-                    if (rData.status === "day") statusText = "☀️ День";
-                    if (rData.status === "ended") statusText = "🏁 Игра окончена";
-
-                    const div = document.createElement("div");
-                    div.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #7f9db9; padding: 6px; margin-bottom: 4px; font-size: 11px;";
-                    div.innerHTML = `
-                        <span><b>${rCode}</b> (${statusText}, игроков: ${playersCount})</span>
-                        <button data-code="${rCode}" class="join-room-btn">Войти</button>
-                    `;
-                    roomsListDiv.appendChild(div);
+                    allRoomsCache.push({ code: docSnap.id, data: docSnap.data() });
                 });
-
-                document.querySelectorAll(".join-room-btn").forEach(btn => {
-                    btn.addEventListener("click", async (e) => {
-                        const targetCode = e.target.getAttribute("data-code");
-                        await joinRoom(targetCode);
-                    });
-                });
+                filterAndRenderRooms();
             }, (error) => {
                 console.error("Ошибка Firebase:", error);
                 roomsListDiv.innerHTML = `<p style='font-size: 11px; color: red; padding: 5px;'>Ошибка загрузки комнат.</p>`;
