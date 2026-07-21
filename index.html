@@ -78,18 +78,37 @@
             margin-bottom: 10px;
             font-size: 11px;
         }
+        .room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #7f9db9;
+            padding: 5px;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
 
-    <!-- ОКНО ВХОДА -->
+    <!-- ОКНО ВХОДА И СОЗДАНИЯ КОМНАТ -->
     <div class="window" id="login-screen">
-        <div class="window-title">Авторизация в комнату</div>
+        <div class="window-title">Лобби - Выбор комнаты</div>
         <div class="window-body">
-            <p>Введите ваш ник и код комнаты для подключения:</p>
-            Имя игрока: <br><input type="text" id="username" style="width: 100%; margin-bottom: 10px;"><br>
-            Код комнаты: <br><input type="text" id="room-code" style="width: 100%; margin-bottom: 15px;"><br>
-            <button id="join-btn">Войти в игру</button>
+            <p>Ваше имя игрока:</p>
+            <input type="text" id="username" style="width: 100%; margin-bottom: 10px;" placeholder="Введите ник"><br>
+            
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+            
+            <b>Создать новую комнату:</b><br>
+            <input type="text" id="new-room-code" style="width: 70%; margin-top: 5px;" placeholder="Название / код комнаты">
+            <button id="create-room-btn">Создать</button>
+
+            <b style="display: block; margin-top: 15px;">Активные комнаты:</b>
+            <div id="rooms-list" style="background: #fff; border: 1px inset #7f9db9; height: 110px; overflow-y: auto; padding: 5px; margin-top: 5px;">
+                <p style="text-align: color: #666; font-size: 11px;">Загрузка комнат...</p>
+            </div>
         </div>
     </div>
 
