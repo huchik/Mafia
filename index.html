@@ -157,7 +157,10 @@
 
     <!-- ОКНО ВХОДА -->
     <div class="window" id="login-screen">
-        <div class="window-title">Лобби - Выбор комнаты</div>
+        <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Лобби - Выбор комнаты</span>
+            <button id="open-admin-btn" style="font-size: 10px; padding: 2px 6px; background: #fff2cc; border-color: #d6b656;">👑 Админка</button>
+        </div>
         <div class="window-body">
             <p style="margin-top: 0;">Ваше имя игрока:</p>
             <input type="text" id="username" style="width: 100%; margin-bottom: 10px;" placeholder="Введите ник"><br>
@@ -174,6 +177,30 @@
             <div id="rooms-list" style="background: #fff; border: 1px inset #7f9db9; height: 130px; overflow-y: auto; padding: 5px; margin-top: 5px;">
                 <p style="font-size: 11px; color: #666;">Загрузка комнат...</p>
             </div>
+        </div>
+    </div>
+
+    <!-- АДМИН-ПАНЕЛЬ -->
+    <div class="window hidden" id="admin-screen">
+        <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Панель Администратора</span>
+            <button id="close-admin-btn" style="font-size: 10px; padding: 2px 6px;">❌ Закрыть</button>
+        </div>
+        <div class="window-body">
+            <div style="margin-bottom: 10px; font-size: 11px; background: #fff; border: 1px inset #7f9db9; padding: 6px;">
+                <b>Статистика:</b><br>
+                Онлайн игроков во всех комнатах: <span id="admin-online-count" style="color: green; font-weight: bold;">0</span>
+            </div>
+
+            <b style="font-size: 11px;">Смена ника игроку:</b>
+            <div style="display: flex; gap: 5px; margin-top: 5px; margin-bottom: 10px;">
+                <input type="text" id="admin-old-name" placeholder="Старый ник" style="flex: 1; font-size: 11px;">
+                <input type="text" id="admin-new-name" placeholder="Новый ник" style="flex: 1; font-size: 11px;">
+                <button id="admin-change-name-btn" style="font-size: 11px;">Сменить</button>
+            </div>
+
+            <b style="font-size: 11px;">Быстрые действия разработчика:</b><br>
+            <button id="admin-dev-tag-btn" style="width: 100%; margin-top: 5px; font-size: 11px; background: #d4edda; border-color: #c3e6cb;">⭐ Выдать себе тег разработчика [DEV]</button>
         </div>
     </div>
 
@@ -238,7 +265,7 @@
     <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -254,12 +281,22 @@
         const db = getFirestore(app);
 
         const loginScreen = document.getElementById("login-screen");
+        const adminScreen = document.getElementById("admin-screen");
         const gameScreen = document.getElementById("game-screen");
+        
         const usernameInput = document.getElementById("username");
         const newRoomCodeInput = document.getElementById("new-room-code");
         const createRoomBtn = document.getElementById("create-room-btn");
         const roomsListDiv = document.getElementById("rooms-list");
         const leaveRoomBtn = document.getElementById("leave-room-btn");
+
+        const openAdminBtn = document.getElementById("open-admin-btn");
+        const closeAdminBtn = document.getElementById("close-admin-btn");
+        const adminOnlineCount = document.getElementById("admin-online-count");
+        const adminOldName = document.getElementById("admin-old-name");
+        const adminNewName = document.getElementById("admin-new-name");
+        const adminChangeNameBtn = document.getElementById("admin-change-name-btn");
+        const adminDevTagBtn = document.getElementById("admin-dev-tag-btn");
 
         const playersList = document.getElementById("players-list");
         const roomTitleBar = document.getElementById("room-title-bar");
@@ -298,6 +335,103 @@
         let lastStatus = "waiting";
         let lastSheriffResult = "";
         let unsubscribeRoom = null;
+        let unsubscribeAdminRooms = null;
+
+        // Открытие админки с паролем
+        openAdminBtn.addEventListener("click", () => {
+            const pwd = prompt("Введите пароль администратора:");
+            if (pwd === "Mamka228") {
+                loginScreen.classList.add("hidden");
+                adminScreen.classList.remove("hidden");
+                startAdminListener();
+            } else if (pwd !== null) {
+                showXpError("Неверный пароль!");
+            }
+        });
+
+        closeAdminBtn.addEventListener("click", () => {
+            adminScreen.classList.add("hidden");
+            loginScreen.classList.remove("hidden");
+            if (unsubscribeAdminRooms) {
+                unsubscribeAdminRooms();
+                unsubscribeAdminRooms = null;
+            }
+        });
+
+        // Слушатель для админки (сбор онлайна)
+        function startAdminListener() {
+            const roomsRef = collection(db, "rooms");
+            unsubscribeAdminRooms = onSnapshot(roomsRef, (snapshot) => {
+                let totalOnline = 0;
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (data.players) {
+                        totalOnline += data.players.length;
+                    }
+                });
+                adminOnlineCount.innerText = totalOnline;
+            });
+        }
+
+        // Смена ника через админку во всех комнатах
+        adminChangeNameBtn.addEventListener("click", async () => {
+            const oldN = adminOldName.value.trim();
+            const newN = adminNewName.value.trim();
+            if (!oldN || !newN) {
+                showXpError("Заполните оба поля для смены ника!");
+                return;
+            }
+
+            try {
+                const roomsRef = collection(db, "rooms");
+                const snapshot = await getDocs(roomsRef);
+                let updatedCount = 0;
+
+                for (const docSnap of snapshot.docs) {
+                    const rData = docSnap.data();
+                    let changed = false;
+                    
+                    // Обновляем в списке игроков
+                    let players = rData.players.map(p => {
+                        if (p.name === oldN) {
+                            changed = true;
+                            return { ...p, name: newN };
+                        }
+                        return p;
+                    });
+
+                    // Обновляем хоста, если нужно
+                    let host = rData.host;
+                    if (host === oldN) {
+                        host = newN;
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        await updateDoc(doc(db, "rooms", docSnap.id), { players, host });
+                        updatedCount++;
+                    }
+                }
+
+                showXpError(`Ник успешно изменен в комнатах (${updatedCount})!`);
+                adminOldName.value = "";
+                adminNewName.value = "";
+            } catch (err) {
+                console.error(err);
+                showXpError("Ошибка при смене ника.");
+            }
+        });
+
+        // Выдача тега разработчика
+        adminDevTagBtn.addEventListener("click", () => {
+            const currentVal = usernameInput.value.trim();
+            if (!currentVal.includes("[DEV]")) {
+                usernameInput.value = "[DEV] " + currentVal;
+                showXpError("Тег разработчика добавлен к вашему полю ввода никнейма!");
+            } else {
+                showXpError("Тег уже установлен!");
+            }
+        });
 
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
@@ -343,7 +477,7 @@
             roomCode = newRoomCodeInput.value.trim();
 
             if (!playerName) { showXpError("Введите имя игрока!"); return; }
-            if (playerName.length > 20) { showXpError("Имя игрока не должно превышать 20 символов!"); return; }
+            if (playerName.length > 30) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
             if (!roomCode) { showXpError("Введите название комнаты!"); return; }
 
@@ -372,7 +506,7 @@
         async function joinRoom(code) {
             playerName = usernameInput.value.trim();
             if (!playerName) { showXpError("Сначала введите ваше имя вверху!"); return; }
-            if (playerName.length > 20) { showXpError("Имя игрока не должно превышать 20 символов!"); return; }
+            if (playerName.length > 30) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
 
             roomCode = code;
@@ -537,7 +671,6 @@
                 let sheriffTarget = null;
                 let putanaName = null;
 
-                // Точный сбор ночных целей каждого игрока
                 for (let pName in actions) {
                     let act = actions[pName];
                     if (act.role === "Мафия") mafiaTarget = act.target;
@@ -551,7 +684,6 @@
 
                 let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
 
-                // Проверка действий путаны
                 if (blockedTarget) {
                     if (blockedTarget === mafiaTarget) {
                         nightLog += `• Путана (<b>${putanaName}</b>) заскочила к мафии и была убита!<br>`;
@@ -560,18 +692,15 @@
                         mafiaTarget = null; 
                     } else {
                         nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b> и заблокировала его действия.<br>`;
-                        // Если путана заблокировала доктора, то доктор не сможет никого вылечить
                         if (blockedTarget === doctorTarget) {
                             doctorTarget = null;
                         }
-                        // Если путана заблокировала шерифа, то шериф ничего не проверяет
                         if (blockedTarget === sheriffTarget) {
                             sheriffTarget = null;
                         }
                     }
                 }
 
-                // Исцеление доктора
                 let saved = false;
                 if (mafiaTarget && mafiaTarget === doctorTarget) {
                     saved = true;
