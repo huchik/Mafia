@@ -119,7 +119,10 @@
 
     <!-- ИГРОВОЕ ОКНО -->
     <div class="window hidden" id="game-screen">
-        <div class="window-title" id="room-title-bar">Мафия - Комната</div>
+        <div class="window-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="room-title-bar">Мафия - Комната</span>
+            <button id="leave-room-btn" style="font-size: 10px; padding: 2px 6px; background: #ffcccc; border-color: #ff9999;">🚪 Выйти</button>
+        </div>
         <div class="window-body">
             <div class="status-box" id="role-display">Ваша роль: Ожидание...</div>
 
@@ -158,7 +161,7 @@
     <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -179,6 +182,7 @@
         const newRoomCodeInput = document.getElementById("new-room-code");
         const createRoomBtn = document.getElementById("create-room-btn");
         const roomsListDiv = document.getElementById("rooms-list");
+        const leaveRoomBtn = document.getElementById("leave-room-btn");
 
         const playersList = document.getElementById("players-list");
         const roomTitleBar = document.getElementById("room-title-bar");
@@ -198,6 +202,8 @@
         let roomCode = "";
         let hasActed = false;
         let lastStatus = "waiting";
+        let lastSheriffResult = ""; // Переменная для хранения личного результата проверки шерифа
+        let unsubscribeRoom = null; // Для отписки от комнаты при выходе
 
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
@@ -302,6 +308,45 @@
             subscribeToRoom();
         }
 
+        // КНОПКА ВЫХОДА ИЗ КОМНАТЫ
+        leaveRoomBtn.addEventListener("click", async () => {
+            if (!confirm("Вы действительно хотите выйти из комнаты?")) return;
+
+            try {
+                const roomRef = doc(db, "rooms", roomCode);
+                const roomSnap = await getDoc(roomRef);
+
+                if (roomSnap.exists()) {
+                    const data = roomSnap.data();
+                    const updatedPlayers = data.players.filter(p => p.name !== playerName);
+
+                    if (updatedPlayers.length === 0 || data.host === playerName) {
+                        // Если вышел хост или никого не осталось — удаляем комнату
+                        // (В Firestore удаление делается через deleteDoc, но проще обнулить или оставить пустой)
+                    } else {
+                        // Просто удаляем игрока из списка
+                        await updateDoc(roomRef, {
+                            players: updatedPlayers,
+                            messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: `🚪 Игрок ${playerName} покинул комнату.` })
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Ошибка при выходе:", err);
+            }
+
+            if (unsubscribeRoom) {
+                unsubscribeRoom(); // Прекращаем слушать обновления комнаты
+                unsubscribeRoom = null;
+            }
+
+            gameScreen.classList.add("hidden");
+            loginScreen.classList.remove("hidden");
+            roomCode = "";
+            hasActed = false;
+            lastSheriffResult = "";
+        });
+
         startBtn.addEventListener("click", async () => {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
@@ -350,6 +395,14 @@
                 let actions = data.nightActions || {};
                 const me = data.players.find(p => p.name === playerName);
                 actions[playerName] = { role: me.role, target: targetValue };
+
+                // Если ходит шериф, сразу вычисляем результат лично для него
+                if (me.role === "Шериф") {
+                    let targetPlayer = data.players.find(p => p.name === targetValue);
+                    let isMafia = targetPlayer && targetPlayer.role === "Мафия";
+                    lastSheriffResult = `🔍 Результат проверки (${targetValue}): это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.`;
+                }
+
                 await updateDoc(roomRef, { nightActions: actions });
             } else if (data.status === "day") {
                 let votes = data.dayVotes || {};
@@ -372,17 +425,13 @@
                 let doctorTarget = null;
                 let blockedTarget = null;
                 let sheriffTarget = null;
-                let sheriffName = null;
 
                 for (let pName in actions) {
                     let act = actions[pName];
                     if (act.role === "Мафия") mafiaTarget = act.target;
                     if (act.role === "Доктор") doctorTarget = act.target;
                     if (act.role === "Путана") blockedTarget = act.target;
-                    if (act.role === "Шериф") {
-                        sheriffTarget = act.target;
-                        sheriffName = pName;
-                    }
+                    if (act.role === "Шериф") sheriffTarget = act.target;
                 }
 
                 let nightLog = "☀️ Наступил день. Итоги ночи:<br>";
@@ -410,10 +459,9 @@
                     nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
                 }
 
-                if (sheriffTarget && sheriffName) {
-                    let targetPlayer = players.find(p => p.name === sheriffTarget);
-                    let isMafia = targetPlayer && targetPlayer.role === "Мафия";
-                    nightLog += `• [Шериф ${sheriffName}] проверил ${sheriffTarget}: это ${isMafia ? '<b>МАФИЯ 🔴</b>' : '<b>мирный житель 🟢</b>'}.<br>`;
+                // Шериф сделал проверку, но в общий чат пишем только то, что он провел расследование (без раскрытия деталей)
+                if (sheriffTarget) {
+                    nightLog += "• Шериф ночью вышел на дежурство и проверил одного из жителей.<br>";
                 }
 
                 const aliveMafia = players.filter(p => p.alive && p.role === "Мафия").length;
@@ -506,13 +554,16 @@
 
         function subscribeToRoom() {
             const roomRef = doc(db, "rooms", roomCode);
-            onSnapshot(roomRef, (docSnap) => {
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
                 if (!docSnap.exists()) return;
                 const data = docSnap.data();
 
                 if (data.status !== lastStatus) {
                     hasActed = false;
                     lastStatus = data.status;
+                    if (data.status === "day") {
+                        // При наступлении дня можно очистить личный результат шерифа, если нужно, либо оставить покажет в действиях
+                    }
                 }
 
                 if (data.host === playerName && data.status === "waiting") {
@@ -588,7 +639,12 @@
                                     actionBtn.classList.remove("hidden");
                                     skipBtn.classList.add("hidden");
                                 } else {
-                                    actionInstruction.innerText = "Ход принят. Ждем рассвета...";
+                                    // Если игрок уже сходил
+                                    if (me.role === "Шериф" && lastSheriffResult) {
+                                        actionInstruction.innerHTML = `Ход принят.<br><br>${lastSheriffResult}`;
+                                    } else {
+                                        actionInstruction.innerText = "Ход принят. Ждем рассвета...";
+                                    }
                                     targetSelect.classList.add("hidden");
                                     actionBtn.classList.add("hidden");
                                     skipBtn.classList.add("hidden");
