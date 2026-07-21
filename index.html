@@ -161,7 +161,7 @@
     <!-- ВСЯ ЛОГИКА -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, arrayUnion } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDYqQwLQ2eQyvC_72529zCAMp5kD_Az91c",
@@ -202,8 +202,8 @@
         let roomCode = "";
         let hasActed = false;
         let lastStatus = "waiting";
-        let lastSheriffResult = ""; // Переменная для хранения личного результата проверки шерифа
-        let unsubscribeRoom = null; // Для отписки от комнаты при выходе
+        let lastSheriffResult = "";
+        let unsubscribeRoom = null;
 
         function loadRoomsList() {
             const roomsRef = collection(db, "rooms");
@@ -308,7 +308,6 @@
             subscribeToRoom();
         }
 
-        // КНОПКА ВЫХОДА ИЗ КОМНАТЫ
         leaveRoomBtn.addEventListener("click", async () => {
             if (!confirm("Вы действительно хотите выйти из комнаты?")) return;
 
@@ -320,11 +319,7 @@
                     const data = roomSnap.data();
                     const updatedPlayers = data.players.filter(p => p.name !== playerName);
 
-                    if (updatedPlayers.length === 0 || data.host === playerName) {
-                        // Если вышел хост или никого не осталось — удаляем комнату
-                        // (В Firestore удаление делается через deleteDoc, но проще обнулить или оставить пустой)
-                    } else {
-                        // Просто удаляем игрока из списка
+                    if (updatedPlayers.length > 0) {
                         await updateDoc(roomRef, {
                             players: updatedPlayers,
                             messages: arrayUnion({ sender: "Система", time: new Date().toLocaleTimeString().slice(0, 5), text: `🚪 Игрок ${playerName} покинул комнату.` })
@@ -336,7 +331,7 @@
             }
 
             if (unsubscribeRoom) {
-                unsubscribeRoom(); // Прекращаем слушать обновления комнаты
+                unsubscribeRoom();
                 unsubscribeRoom = null;
             }
 
@@ -347,6 +342,15 @@
             lastSheriffResult = "";
         });
 
+        // ЧЕСТНЫЙ АЛГОРИТМ РАНДОМИЗАЦИИ (Алгоритм Фишера — Йетса)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
         startBtn.addEventListener("click", async () => {
             const roomRef = doc(db, "rooms", roomCode);
             const roomSnap = await getDoc(roomRef);
@@ -356,10 +360,17 @@
             if (players.length < 4) { alert("Нужно минимум 4 игрока (Мафия, Шериф, Доктор, Путана)!"); return; }
 
             const rolesPool = ["Мафия", "Шериф", "Доктор", "Путана"];
-            while (rolesPool.length < players.length) rolesPool.push("Мирный");
-            rolesPool.sort(() => Math.random() - 0.5);
+            while (rolesPool.length < players.length) {
+                rolesPool.push("Мирный");
+            }
+            
+            // Перемешиваем пул ролей по-настоящему случайно
+            shuffleArray(rolesPool);
 
-            players.forEach((p, i) => { p.role = rolesPool[i]; p.alive = true; });
+            players.forEach((p, i) => { 
+                p.role = rolesPool[i]; 
+                p.alive = true; 
+            });
 
             await updateDoc(roomRef, {
                 status: "night",
@@ -396,7 +407,6 @@
                 const me = data.players.find(p => p.name === playerName);
                 actions[playerName] = { role: me.role, target: targetValue };
 
-                // Если ходит шериф, сразу вычисляем результат лично для него
                 if (me.role === "Шериф") {
                     let targetPlayer = data.players.find(p => p.name === targetValue);
                     let isMafia = targetPlayer && targetPlayer.role === "Мафия";
@@ -459,7 +469,6 @@
                     nightLog += "• Ночь прошла спокойно, никто не погиб.<br>";
                 }
 
-                // Шериф сделал проверку, но в общий чат пишем только то, что он провел расследование (без раскрытия деталей)
                 if (sheriffTarget) {
                     nightLog += "• Шериф ночью вышел на дежурство и проверил одного из жителей.<br>";
                 }
@@ -559,11 +568,8 @@
                 const data = docSnap.data();
 
                 if (data.status !== lastStatus) {
-                    hasActed = false;
+                    hasActed = false; // Сбрасываем флаг действия при смене дня/ночи
                     lastStatus = data.status;
-                    if (data.status === "day") {
-                        // При наступлении дня можно очистить личный результат шерифа, если нужно, либо оставить покажет в действиях
-                    }
                 }
 
                 if (data.host === playerName && data.status === "waiting") {
@@ -639,7 +645,6 @@
                                     actionBtn.classList.remove("hidden");
                                     skipBtn.classList.add("hidden");
                                 } else {
-                                    // Если игрок уже сходил
                                     if (me.role === "Шериф" && lastSheriffResult) {
                                         actionInstruction.innerHTML = `Ход принят.<br><br>${lastSheriffResult}`;
                                     } else {
