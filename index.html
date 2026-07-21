@@ -432,7 +432,6 @@
             });
         }
 
-        // Функция проверки игрока на бан по нику
         async function checkIsBanned(nameToCheck) {
             try {
                 const banRef = doc(db, "settings", "bannedNicknames");
@@ -451,7 +450,6 @@
             return false;
         }
 
-        // Кнопка бана игрока по нику в админке
         adminBanBtn.addEventListener("click", async () => {
             const nickToBan = adminBanNickname.value.trim();
             if (!nickToBan) {
@@ -472,7 +470,6 @@
                     bannedList.push(nickToBan);
                     await setDoc(banRef, { list: bannedList }, { merge: true });
 
-                    // Автоматически удаляем забаненного игрока из активных комнат, если он там сидит
                     const roomsRef = collection(db, "rooms");
                     const snapshot = await getDocs(roomsRef);
                     for (const docSnap of snapshot.docs) {
@@ -638,7 +635,6 @@
             if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
             
-            // Проверяем бан по нику
             if (await checkIsBanned(playerName)) return;
 
             if (!roomCode) { showXpError("Введите название комнаты!"); return; }
@@ -671,7 +667,6 @@
             if (playerName.length > 80) { showXpError("Имя игрока слишком длинное!"); return; }
             if (playerName.includes("ㅤ")) { showXpError("Использование невидимого символа запрещено!"); return; }
 
-            // Проверяем бан по нику
             if (await checkIsBanned(playerName)) return;
 
             roomCode = code;
@@ -760,17 +755,14 @@
                                 const checkData = checkSnap.data();
                                 if (checkData.players && checkData.players.length === 0) {
                                     await deleteDoc(roomRef);
-                                    console.log(`Комната ${targetRoomCode} удалена (игроков: 0 более 5 сек).`);
                                 }
                             }
-                        } catch (e) {
-                            console.error("Ошибка при автоудалении пустой комнаты:", e);
-                        }
+                        } catch (e) {}
                     }, 5000);
                 }
 
             } catch (err) {
-                console.error("Ошибка при удалении игрока из комнаты:", err);
+                console.error(err);
             }
         }
 
@@ -898,12 +890,8 @@
                         mafiaTarget = null; 
                     } else {
                         nightLog += `• Путана провела ночь с игроком <b>${blockedTarget}</b> и заблокировала его действия.<br>`;
-                        if (blockedTarget === doctorTarget) {
-                            doctorTarget = null;
-                        }
-                        if (blockedTarget === sheriffTarget) {
-                            sheriffTarget = null;
-                        }
+                        if (blockedTarget === doctorTarget) doctorTarget = null;
+                        if (blockedTarget === sheriffTarget) sheriffTarget = null;
                     }
                 }
 
@@ -1029,7 +1017,6 @@
         function subscribeToRoom() {
             const roomRef = doc(db, "rooms", roomCode);
             unsubscribeRoom = onSnapshot(roomRef, async (docSnap) => {
-                // Дополнительная проверка прямо во время игры: если игрока забанили, пока он сидит в комнате
                 if (await checkIsBanned(playerName)) {
                     if (unsubscribeRoom) {
                         unsubscribeRoom();
