@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Мафия Онлайн</title>
+    <style>
+        body {
+            background-color: #4b6b94;
+            font-family: Tahoma, Arial, sans-serif;
+            color: #000;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        
+        .window {
+            background: #ece9d8;
+            border: 2px solid;
+            border-color: #fff #000 #000 #fff;
+            width: 520px;
+            margin: 20px auto;
+            text-align: left;
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.5);
+        }
+        .window-title {
+            background: linear-gradient(to bottom, #0a246a, #a6caf0);
+            color: white;
+            padding: 4px 8px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .window-body {
+            padding: 15px;
+        }
+        
+        input, button, select {
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            border: 1px solid #7f9db9;
+            padding: 4px;
+            background: #fff;
+        }
+        button {
+            background: linear-gradient(to bottom, #f0f0f0, #e0e0e0);
+            border: 1px solid #707070;
+            cursor: pointer;
+            padding: 4px 12px;
+            margin: 2px;
+        }
+        button:active {
+            background: linear-gradient(to bottom, #e0e0e0, #f0f0f0);
+        }
+
+        #chat-box {
+            background: #fff;
+            border: 1px inset #7f9db9;
+            height: 130px;
+            overflow-y: scroll;
+            padding: 5px;
+            margin-bottom: 10px;
+            font-size: 11px;
+            text-align: left;
+        }
+        .chat-msg {
+            margin-bottom: 4px;
+            border-bottom: 1px dashed #eee;
+            padding-bottom: 2px;
+        }
+        .chat-msg a {
+            color: #0000ff;
+            text-decoration: underline;
+        }
+        .status-box {
+            background: #ffffcc;
+            border: 1px solid #ffeb3b;
+            padding: 6px;
+            margin-bottom: 10px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ОКНО ВХОДА -->
+    <div class="window" id="login-screen">
+        <div class="window-title">Авторизация в комнату</div>
+        <div class="window-body">
+            <p>Введите ваш ник и код комнаты для подключения:</p>
+            Имя игрока: <br><input type="text" id="username" style="width: 100%; margin-bottom: 10px;"><br>
+            Код комнаты: <br><input type="text" id="room-code" style="width: 100%; margin-bottom: 15px;"><br>
+            <button id="join-btn">Войти в игру</button>
+        </div>
+    </div>
+
+    <!-- ИГРОВОЕ ОКНО -->
+    <div class="window hidden" id="game-screen">
+        <div class="window-title" id="room-title-bar">Мафия - Комната</div>
+        <div class="window-body">
+            <div class="status-box" id="role-display">
+                Ваша роль: Ожидание распределения...
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <button id="start-btn" class="hidden">🎲 Раздать роли и начать игру</button>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <div style="width: 45%;">
+                    <b>Игроки:</b>
+                    <ul id="players-list" style="background: #fff; border: 1px inset #7f9db9; height: 110px; overflow-y: auto; padding: 5px; margin-top: 5px; list-style: none; font-size: 11px;"></ul>
+                </div>
+                <div style="width: 50%;">
+                    <b>Действие (Ночь):</b>
+                    <div id="action-panel" style="background: #eee; border: 1px solid #ccc; padding: 5px; height: 110px; font-size: 11px; margin-top: 5px;">
+                        <p id="action-instruction">Игра еще не началась.</p>
+                        <select id="target-select" style="width: 100%; margin-bottom: 5px;" class="hidden"></select>
+                        <button id="action-btn" class="hidden">Подтвердить ход</button>
+                    </div>
+                </div>
+            </div>
+
+            <b style="display: block; margin-top: 10px;">Чат комнаты:</b>
+            <div id="chat-box"></div>
+            <input type="text" id="chat-input" placeholder="Сообщение или ссылка..." style="width: 78%;">
+            <button id="send-chat-btn">Отправить</button>
+        </div>
+    </div>
+
+    <script type="module" src="game.js"></script>
+</body>
+</html>
