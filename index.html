@@ -232,6 +232,9 @@
                         await joinRoom(targetCode);
                     });
                 });
+            }, (error) => {
+                console.error("Ошибка Firebase:", error);
+                roomsListDiv.innerHTML = `<p style='font-size: 11px; color: red; padding: 5px;'>Ошибка загрузки комнат.</p>`;
             });
         }
 
@@ -507,7 +510,6 @@
                 if (!docSnap.exists()) return;
                 const data = docSnap.data();
 
-                // Сбрасываем флаг хода игрока при изменении статуса (фазы) игры на сервере
                 if (data.status !== lastStatus) {
                     hasActed = false;
                     lastStatus = data.status;
@@ -606,7 +608,6 @@
                                     }
                                 });
                                 targetSelect.classList.remove("hidden");
-                                actionBtn.classList.0 && actionBtn.classList.remove("hidden");
                                 actionBtn.classList.remove("hidden");
                                 skipBtn.classList.remove("hidden");
                             } else {
