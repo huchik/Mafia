@@ -693,6 +693,7 @@
 
             gameScreen.classList.add("hidden");
             loginScreen.classList.remove("hidden");
+
             roomCode = "";
             hasActed = false;
             lastSheriffResult = "";
@@ -712,38 +713,31 @@
                 const data = roomSnap.data();
                 const updatedPlayers = (data.players || []).filter(p => p.name !== targetPlayerName);
 
+                // Если игроков не осталось — моментально удаляем комнату
+                if (updatedPlayers.length === 0) {
+                    await deleteDoc(roomRef);
+                    return;
+                }
+
+                // Передаем хоста следующему
                 let newHost = data.host;
-                if (data.host === targetPlayerName && updatedPlayers.length > 0) {
+                if (data.host === targetPlayerName) {
                     newHost = updatedPlayers[0].name;
                 }
 
                 await updateDoc(roomRef, {
                     players: updatedPlayers,
                     host: newHost,
-                    messages: updatedPlayers.length > 0 ? arrayUnion({
+                    messages: arrayUnion({
                         sender: "Система",
                         isDevSender: false,
                         time: new Date().toLocaleTimeString().slice(0, 5),
-                        text: `Игрок ${targetPlayerName} покинул комнату.`
-                    }) : data.messages
+                        text: `Игрок <b>${targetPlayerName}</b> покинул игру.`
+                    })
                 });
 
-                if (updatedPlayers.length === 0) {
-                    setTimeout(async () => {
-                        try {
-                            const checkSnap = await getDoc(roomRef);
-                            if (checkSnap.exists()) {
-                                const checkData = checkSnap.data();
-                                if (checkData.players && checkData.players.length === 0) {
-                                    await deleteDoc(roomRef);
-                                }
-                            }
-                        } catch (e) {}
-                    }, 5000);
-                }
-
             } catch (err) {
-                console.error(err);
+                console.error("Ошибка при выходе из комнаты:", err);
             }
         }
 
@@ -1166,7 +1160,6 @@
                         div.className = "chat-msg";
                         const formattedSender = renderFormattedPlayerName({ name: msg.sender, isDev: msg.isDevSender });
                         
-                        // Если сообщение отправила Система — разрешаем HTML-разметку!
                         let textContent = "";
                         if (msg.sender === "Система") {
                             textContent = msg.text;
