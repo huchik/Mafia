@@ -823,7 +823,7 @@
                 if (me.role === "Шериф") {
                     let targetPlayer = data.players.find(p => p.name === targetValue);
                     let isMafia = targetPlayer && targetPlayer.role === "Мафия";
-                    lastSheriffResult = `Результат проверки (${targetValue}): это ${isMafia ? '<b>МАФИЯ</b>' : '<b>мирный житель</b>'}.`;
+                    lastSheriffResult = `Результат проверки (${targetValue}): это <b>${isMafia ? 'МАФИЯ' : 'мирный житель'}</b>.`;
                 }
 
                 await updateDoc(roomRef, { nightActions: actions });
@@ -949,7 +949,7 @@
                     let victim = players.find(p => p.name === lynched);
                     if (victim) {
                         victim.alive = false;
-                        dayLog += `• Город решил изгнать игрока <b>${victim.name}</b>. Это был **${victim.role}**!<br>`;
+                        dayLog += `• Город решил изгнать игрока <b>${victim.name}</b>. Это был <b>${victim.role}</b>!<br>`;
 
                         if (victim.role === "Мафия") {
                             dayLog += "<br><b>ГОРОД ПОБЕДИЛ!</b> Мафия была изгнана из города.<br><br><i>Комната будет удалена через 5 секунд...</i>";
@@ -1165,7 +1165,16 @@
                         const div = document.createElement("div");
                         div.className = "chat-msg";
                         const formattedSender = renderFormattedPlayerName({ name: msg.sender, isDev: msg.isDevSender });
-                        div.innerHTML = `<b>[${msg.time}]</b> ${formattedSender}: <span style="font-size: 11px;">${msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
+                        
+                        // Если сообщение отправила Система — разрешаем HTML-разметку!
+                        let textContent = "";
+                        if (msg.sender === "Система") {
+                            textContent = msg.text;
+                        } else {
+                            textContent = msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                        }
+
+                        div.innerHTML = `<b>[${msg.time}]</b> ${formattedSender}: <span style="font-size: 11px;">${textContent}</span>`;
                         chatBox.appendChild(div);
                     });
                     chatBox.scrollTop = chatBox.scrollHeight;
